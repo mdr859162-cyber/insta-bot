@@ -183,7 +183,7 @@ def handle_work(message):
 👤 **Username:** `{ig_user}`
 🔑 **Password:** `{ig_pass}`
 
-⏱ **সময়সীমা:** ৫ মিনিট (এর মধ্যে কাজ শেষ করতে হবে)
+⏱ **সময়সীমা:** ১ ঘণ্টা (এর মধ্যে কাজ শেষ করতে হবে)
 
 📌 **নির্দেশিকা:**
 ১. তথ্যগুলো দিয়ে আইডি খুলে 2FA চালু করুন।
@@ -199,17 +199,34 @@ def cancel_task_action(call):
     user_id = call.from_user.id
     if user_id in user_active_task:
         del user_active_task[user_id]
-        bot.edit_message_text("❌ **আপনার কাজ বাতিল করা হয়েছে।** বটের ডাটা ক্লিয়ার করা হলো।", call.message.chat.id, call.message.message_id)
+        try:
+            bot.edit_message_text("❌ **আপনার কাজ বাতিল করা হয়েছে।** বটের ডাটা ক্লিয়ার করা হলো।", call.message.chat.id, call.message.message_id)
+        except Exception:
+            bot.send_message(user_id, "❌ **আপনার কাজ বাতিল করা হয়েছে।** বটের ডাটা ক্লিয়ার করা হলো।", parse_mode="Markdown")
     else:
-        bot.answer_callback_query(call.id, "কোনো কাজ সক্রিয় নেই!", show_alert=True)
+        bot.answer_callback_query(call.id, "কোনো সক্রিয় কাজ নেই বা সেশন আগেই শেষ হয়ে গেছে!", show_alert=True)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
 
 @bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
 def ask_2fa_key(call):
     user_id = call.from_user.id
     if user_id not in user_active_task:
+        bot.answer_callback_query(call.id, "সেশন আউট হয়ে গেছে!", show_alert=True)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
         bot.send_message(user_id, "❌ সেশন আউট হয়ে গেছে! নতুন কাজ নিতে '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।")
         return
         
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
     bot.send_message(user_id, "📥 **আপনার 2FA Secret Key-টি পাঠান:**\n*(উদাহরণ: `JBSWY3DPEHPK3PXP`)*", parse_mode="Markdown")
     bot.register_next_step_handler(call.message, process_2fa_input)
 
@@ -217,12 +234,13 @@ def process_2fa_input(message):
     user_id = message.from_user.id
     
     if user_id not in user_active_task:
-        bot.send_message(user_id, "❌ কাজের সময়সীমা পার হয়ে গেছে।")
+        bot.send_message(user_id, "❌ সেশন আউট হয়ে গেছে অথবা আপনার কাজ বাতিল করা হয়েছে। নতুন কাজ নিতে '💼 কাজ শুরু করুন 🚀' চাপুন।")
         return
 
-    if time.time() - user_active_task[user_id]["start_time"] > 300:
+    # ১ ঘণ্টা = ৩৬০০ সেকেন্ড
+    if time.time() - user_active_task[user_id]["start_time"] > 3600:
         del user_active_task[user_id]
-        bot.send_message(user_id, "⏱ **৫ মিনিট সময় পার হয়ে গেছে!** নতুন ইউজারনেম-পাসওয়ার্ড নিয়ে আবার চেষ্টা করুন।")
+        bot.send_message(user_id, "⏳ **সেশন আউট!** ১ ঘণ্টা সময় পার হয়ে যাওয়ায় আপনার কাজটি স্বয়ংক্রয়ভাবে বাতিল করা হয়েছে। নতুন কাজ নিতে আবার চেষ্টা করুন।")
         return
 
     secret_key = message.text.strip().replace(" ", "").upper()
@@ -298,6 +316,11 @@ def process_withdraw_method(call):
 
     user_withdraw_data[user_id] = {"method": method, "balance": balance, "min_wd": min_wd}
     
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
     bot.send_message(user_id, f"📱 **আপনার {method} নম্বরটি লিখে পাঠান:**", parse_mode="Markdown")
     bot.register_next_step_handler(call.message, get_withdraw_number)
 
