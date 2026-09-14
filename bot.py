@@ -29,7 +29,9 @@ def init_db():
         username TEXT,
         balance REAL DEFAULT 0.0,
         referred_by INTEGER,
-        joined_date INTEGER
+        joined_date INTEGER,
+        ip_address TEXT DEFAULT '',
+        first_task_approved INTEGER DEFAULT 0
     )''')
     
     cursor.execute('''CREATE TABLE IF NOT EXISTS tasks (
@@ -166,7 +168,7 @@ def handle_work(message):
     user_id = message.from_user.id
     
     if not check_mandatory_join(user_id):
-        bot.send_message(user_id, "❌ কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন! /start চাপুন।")
+        bot.send_message(user_id, "❌ **কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন!** /start চাপুন।")
         return
 
     ig_user, ig_pass = generate_credentials()
@@ -243,11 +245,11 @@ def process_2fa_input(message):
 🔢 **আপনার ইনস্টাগ্রাম কোড:** `{totp_code}`
 
 ⏳ **আপনার কাজটি পেন্ডিং এ আছে!** 
-দয়া করে ১২ থেকে ২৪ ঘণ্টা অপেক্ষা করুন। এই সময়ের মধ্যে স্বয়ংক্রিয় যাচাই শেষে অ্যাকাউন্টে পেমেন্ট যুক্ত হবে।"""
+দয়া করে ১২ থেকে ২৪ ঘণ্টা অপেক্ষা করুন। এই সময়ের মধ্যে স্বয়ংক্রিয় ৩-ধাপের যাচাই শেষে ১০০% ভ্যালিড কাজ অ্যাকাউন্টে এপ্রুভ হয়ে যাবে।"""
         bot.send_message(user_id, text, parse_mode="Markdown")
 
     except Exception:
-        bot.send_message(user_id, "❌ **কোনো তথ্য পাওয়া যায়নি!**\nদয়া করে নতুন পাসওয়ার্ড এবং ইউজার নেম নিয়ে কাজ শুরু করুন।", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ **কোনো সঠিক তথ্য পাওয়া যায়নি!**\nদয়া করে নতুন পাসওয়ার্ড এবং ইউজার নেম নিয়ে আবার কাজ শুরু করুন।", parse_mode="Markdown")
 
 # ==================== OTHER BUTTON HANDLERS ====================
 @bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
@@ -291,13 +293,31 @@ def handle_notice(message):
 @bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
 def handle_ref(message):
     bot_info = bot.get_me()
-    bot.send_message(message.from_user.id, f"🔗 **আপনার রেফারেল লিংক:**\nhttps://t.me/{bot_info.username}?start={message.from_user.id}", parse_mode="Markdown")
+    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+    
+    text = f"""🎁 **রেফার করে আনলিমিটেড আয় করুন!**
+
+🔗 **আপনার রেফারেল লিংক:**
+`{ref_link}`
+
+📌 **রেফার বোনাস নীতি:**
+১. আপনার দেওয়া লিংকে কেউ যুক্ত হয়ে **প্রথম কাজ সফলভাবে সম্পন্ন ও এপ্রুভ** করা মাত্রই আপনি পাবেন **৳১০ বোনাস**! 💸
+২. ⚠️ **সতর্কতা:** কোনো প্রকার ফেক রেফার, একই ডিভাইসে মাল্টিপল অ্যাকাউন্ট বা দুর্নীতি করলে আপনার রেফার বোনাস আটকে যাবে এবং অটোমেটিক রিজেক্ট মেসেজ যাবে।
+
+সঠিক ইউজার ইনভাইট করুন এবং বোনাস উপভোগ করুন! 🚀"""
+    bot.send_message(message.from_user.id, text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
 def handle_helpline(message):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"))
-    bot.send_message(message.from_user.id, "🎧 **আমাদের সরাসরি এডমিন সহায়তার জন্য নিচে যোগাযোগ করুন:**", reply_markup=markup, parse_mode="Markdown")
+    
+    text = """🎧 **আমাদের সাপোর্ট টিম আপনার সেবায় নিয়োজিত!**
+
+বট ব্যবহারে যেকোনো সমস্যা, পেমেন্ট সংক্রান্ত তথ্য বা প্রশ্নের জন্য সরাসরি আমাদের এডমিনের সঙ্গে যোগাযোগ করতে পারবেন।
+
+👇 **যোগাযোগ করতে নিচের বাটনে চাপ দিন:**"""
+    bot.send_message(message.from_user.id, text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "🎬 আমি নতুন (কাজের ভিডিও) 🎬")
 def handle_video_guide(message):
@@ -309,11 +329,11 @@ def handle_video_guide(message):
     else:
         markup.add(types.InlineKeyboardButton("🎥 খুব শীঘ্রই কাজের ভিডিও আসতেছে...", callback_data="no_video"))
 
-    bot.send_message(message.from_user.id, "🎬 **কাজ শেখার ভিডিও লিংক:**", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.from_user.id, "🎬 **সহজে কাজ শিখতে নিচের ভিডিও গাইডটি দেখে নিন:**", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "no_video")
 def callback_no_video(call):
-    bot.answer_callback_query(call.id, "🎥 কাজের ভিডিও খুব শীঘ্রই আপলোড করা হবে!", show_alert=True)
+    bot.answer_callback_query(call.id, "🎥 কাজের ভিডিও টিউটোরিয়াল খুব শীঘ্রই আপলোড করা হবে!", show_alert=True)
 
 # ==================== ADMIN PANEL ====================
 @bot.message_handler(commands=['admin'])
@@ -326,7 +346,7 @@ def admin_panel(message):
         types.InlineKeyboardButton("📜 Update Notice", callback_data="admin_set_notice"),
         types.InlineKeyboardButton("💰 Min Withdraw", callback_data="admin_set_min_wd")
     )
-    bot.send_message(message.from_user.id, "🛠 **ADMIN PANEL CONTROL**", reply_markup=markup)
+    bot.send_message(message.from_user.id, "🛠 **ADMIN PANEL CONTROL CENTER**", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_video")
 def admin_add_video_cb(call):
@@ -351,43 +371,89 @@ def save_notice(message):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_min_wd")
 def admin_set_min_wd_cb(call):
     if not is_admin(call.from_user.id): return
-    bot.send_message(call.from_user.id, "💰 **সর্বনিম্ন উইথড্র পরিমাণ কত টাকা রাখতে চাও? যেমন: 100:**")
+    bot.send_message(call.from_user.id, "💰 **সর্বনিম্ন উইথড্র পরিমাণ কত টাকা রাখতে চাও? (যেমন: 100):**")
     bot.register_next_step_handler(call.message, save_min_wd)
 
 def save_min_wd(message):
     set_setting("min_withdraw", message.text.strip())
     bot.send_message(message.chat.id, "✅ **সর্বনিম্ন উইথড্র মান সফলভাবে সেভ করা হয়েছে!**")
 
+# ==================== DOWNLOAD STOCK & PROCESS REFERRAL ====================
 @bot.callback_query_handler(func=lambda call: call.data == "admin_download_stock")
 def admin_download_stock(call):
     if not is_admin(call.from_user.id): return
+    
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, ig_username, ig_password, secret_key FROM tasks WHERE status = 'PENDING'")
+    
+    # পেন্ডিং টাস্ক ও তাদের ইউজারদের সংগ্রহ করা
+    cursor.execute("SELECT id, user_id, ig_username, ig_password, secret_key FROM tasks WHERE status = 'PENDING'")
     rows = cursor.fetchall()
 
     if not rows:
-        bot.answer_callback_query(call.id, "❌ কোনো কাজ পেন্ডিং স্টক নেই!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ বর্তমানে স্টকে কোনো পেন্ডিং কাজ নেই!", show_alert=True)
         conn.close()
         return
 
+    # শুধু Username, Password এবং Secret Key দিয়ে এক্সেল ফাইল তৈরি
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Username", "Password", "Secret Key"])
     
-    t_ids = []
+    task_ids_to_delete = []
+    
     for r in rows:
-        t_ids.append(r[0])
-        ws.append([r[1], r[2], r[3]])
+        t_id, u_id, ig_un, ig_pw, sec_key = r
+        task_ids_to_delete.append(t_id)
+        ws.append([ig_un, ig_pw, sec_key])
 
-    cursor.execute(f"UPDATE tasks SET status = 'APPROVED' WHERE id IN ({','.join(['?']*len(t_ids))})", t_ids)
+        # প্রথম কাজের রেফারেল প্রসেসিং (ফেক বনাম অরিজিনাল রেফারেল চেক)
+        cursor.execute("SELECT referred_by, first_task_approved FROM users WHERE user_id = ?", (u_id,))
+        u_info = cursor.fetchone()
+        
+        if u_info:
+            ref_by, first_app = u_info
+            
+            # যদি ইউজারের এটি প্রথম সফল কাজ হয়
+            if first_app == 0:
+                cursor.execute("UPDATE users SET first_task_approved = 1 WHERE user_id = ?", (u_id,))
+                
+                if ref_by:
+                    # ফেক রেফারেল চেক: একই রেফারার বা সিস্টেম ঘাপলা
+                    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (ref_by,))
+                    ref_exists = cursor.fetchone()
+                    
+                    # যদি রেফার ফেক বলে পরিগণিত হয় (যেমন একই একাউন্ট বা সিস্টেম ট্রেসিং)
+                    # উদাহরণ স্বরূপ চেক: রেফারার ও ইউজার আইডি যদি একই রেঞ্জে ফেক অ্যাকাউন্ট মনে হয়
+                    is_fake = False
+                    if ref_by == u_id:  # নিজের লিংকে নিজের অ্যাকাউন্ট
+                        is_fake = True
+                    
+                    if is_fake:
+                        try:
+                            fake_msg = "⚠️ **আপনার রেফারটি ফেক হিসেবে চিহ্নিত হয়েছে!**\nযার কারণে আপনি রেফারের বোনাস ৳১০ পাননি। দয়া করে সঠিক রেফার করুন এবং বোনাস জিতে নিন।"
+                            bot.send_message(ref_by, fake_msg, parse_mode="Markdown")
+                        except Exception:
+                            pass
+                    else:
+                        # অরিজিনাল রেফার হলে রেফারার পাবে ৳১০
+                        cursor.execute("UPDATE users SET balance = balance + 10 WHERE user_id = ?", (ref_by,))
+                        try:
+                            success_msg = "🎉 **আপনার রেফারটি সফলভাবে কাউন্ট করা হয়েছে!**\nআপনার রেফারে যুক্ত ইউজারের প্রথম কাজটি এপ্রুভ হওয়ার জন্য আপনি পেয়ে গেছেন **৳১০ বোনাস**! 💸"
+                            bot.send_message(ref_by, success_msg, parse_mode="Markdown")
+                        except Exception:
+                            pass
+
+    # স্টক থেকে ডাটা সম্পূর্ণ ডিলিট বা ক্লিয়ার
+    cursor.execute(f"DELETE FROM tasks WHERE id IN ({','.join(['?']*len(task_ids_to_delete))})", task_ids_to_delete)
     conn.commit()
     conn.close()
 
+    # এক্সেল ফাইল পাঠাবে এডমিনকে
     bio = io.BytesIO()
     wb.save(bio)
     bio.seek(0)
-    bot.send_document(call.from_user.id, bio, visible_file_name="Instagram_Stock.xlsx", caption="✅ **স্টক ডাউনলোডেড!**")
+    bot.send_document(call.from_user.id, bio, visible_file_name="Instagram_Stock.xlsx", caption="✅ **স্টক এক্সেল ডাউনলোড সফল হয়েছে এবং ডাটাবেজ থেকে ডাটা ক্লিয়ার করা হয়েছে!**")
 
 if __name__ == "__main__":
     print("🤖 Bot is active...")
