@@ -23,7 +23,6 @@ def init_db():
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
     
-    # Users Table
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         username TEXT,
@@ -33,7 +32,6 @@ def init_db():
         is_blocked INTEGER DEFAULT 0
     )''')
     
-    # Tasks Table
     cursor.execute('''CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -44,13 +42,11 @@ def init_db():
         created_at INTEGER
     )''')
     
-    # Settings Table (For Dynamic Settings)
     cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT
     )''')
     
-    # Default Dynamic Settings
     defaults = {
         'video_link': 'NO_LINK',
         'min_withdraw': '100',
@@ -150,7 +146,7 @@ def background_task_checker():
 
 Thread(target=background_task_checker, daemon=True).start()
 
-# ==================== MAIN MENU ====================
+# ==================== MAIN MENU KEYBOARD ====================
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
@@ -161,37 +157,9 @@ def main_menu():
     )
     return markup
 
-@bot.message_handler(func=lambda msg: True, content_types=['text'])
-def global_handler(message):
-    user_id = message.from_user.id
-    
-    # Check Bot Off/Maintenance Status
-    if get_setting("bot_status", "ON") == "OFF" and not is_admin(user_id):
-        bot.send_message(user_id, "⚠️ **বট বর্তমানে রক্ষণাবেক্ষণের (Maintenance) জন্য বন্ধ আছে।** কিছুক্ষণ পর চেষ্টা করুন।", parse_mode="Markdown")
-        return
+# ==================== SPECIFIC BUTTON HANDLERS ====================
 
-    text = message.text
-
-    if text == "/start" or text.startswith("/start"):
-        handle_start(message)
-    elif text == "💼 কাজ শুরু করুন 🚀":
-        handle_work(message)
-    elif text == "💰 ব্যালেন্স & উইথড্র 💳":
-        handle_balance(message)
-    elif text == "📊 কাজের রিপোর্ট 📈":
-        handle_report(message)
-    elif text == "📜 কাজের নিয়ম ⚠️":
-        bot.send_message(user_id, get_setting("notice_msg"), parse_mode="Markdown")
-    elif text == "👥 রেফার করুন 🎁":
-        handle_ref(message)
-    elif text == "🎬 আমি নতুন (কাজের ভিডিও) 🎬":
-        handle_video_guide(message)
-    elif text == "🆘 হেল্পলাইন 📞":
-        handle_helpline(message)
-    elif text == "/admin":
-        admin_dashboard(message)
-
-# ==================== START & USER HANDLERS ====================
+@bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
     username = message.from_user.username or ""
@@ -213,6 +181,69 @@ def handle_start(message):
     markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
+@bot.message_handler(func=lambda msg: msg.text == "📜 কাজের নিয়ম ⚠️")
+def handle_notice(message):
+    bot.send_message(message.from_user.id, get_setting("notice_msg"), parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
+def handle_ref(message):
+    bot_info = bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+    ref_custom_text = get_setting("ref_msg")
+    text = f"{ref_custom_text}\n\n🔗 **আপনার রেফার লিংক:**\n`{ref_link}`"
+    bot.send_message(message.from_user.id, text, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
+def handle_helpline(message):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"))
+    bot.send_message(message.from_user.id, get_setting("helpline_msg"), reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text == "🎬 আমি নতুন (কাজের ভিডিও) 🎬")
+def handle_video_guide(message):
+    v_link = get_setting("video_link", "NO_LINK")
+    markup = types.InlineKeyboardMarkup()
+    if v_link != "NO_LINK":
+        markup.add(types.InlineKeyboardButton("🎥 কাজের ভিডিও টিউটোরিয়াল", url=v_link))
+    else:
+        markup.add(types.InlineKeyboardButton("🎥 কাজের ভিডিও শীঘ্রই আসছে...", callback_data="none"))
+    bot.send_message(message.from_user.id, "🎬 **ভিডিও গাইড:**", reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text == "📊 কাজের রিপোর্ট 📈")
+def handle_report(message):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'APPROVED'", (message.from_user.id,))
+    app = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'PENDING'", (message.from_user.id,))
+    pen = cursor.fetchone()[0]
+    conn.close()
+    bot.send_message(message.from_user.id, f"📈 **রিপোর্ট:**\n\n✅ সফল: {app} টি\n⏳ পেন্ডিং: {pen} টি", parse_mode="Markdown")
+
+# ==================== WORK & 3-ATTEMPTS 2FA SYSTEM ====================
+user_active_task = {}
+
+@bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
+def handle_work(message):
+    user_id = message.from_user.id
+    
+    if get_setting("bot_status", "ON") == "OFF" and not is_admin(user_id):
+        bot.send_message(user_id, "⚠️ **বট বর্তমানে রক্ষণাবেক্ষণের (Maintenance) জন্য বন্ধ আছে।**", parse_mode="Markdown")
+        return
+
+    if not check_mandatory_join(user_id):
+        bot.send_message(user_id, "❌ **কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন!**")
+        return
+
+    ig_user, ig_pass = generate_credentials()
+    user_active_task[user_id] = {"username": ig_user, "password": ig_pass, "attempts": 0}
+
+    text = f"🤖 **নতুন কাজের তথ্য:**\n\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nআইডি খুলে 2FA সেটআপ করে নিচের বাটনে ক্লিক করুন।"
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔑 2FA Set", callback_data="get_2fa"))
+    markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+
 @bot.callback_query_handler(func=lambda call: call.data == "click_start")
 def process_start_click(call):
     user_id = call.from_user.id
@@ -232,24 +263,6 @@ def callback_check_join(call):
         bot.send_message(user_id, "🎉 **ধন্যবাদ আমাদের সাথে যুক্ত হওয়ার জন্য!**", reply_markup=main_menu(), parse_mode="Markdown")
     else:
         bot.answer_callback_query(call.id, "⚠️ আগে সাপোর্ট গ্রুপে জয়েন হন!", show_alert=True)
-
-# ==================== WORK SYSTEM ====================
-user_active_task = {}
-
-def handle_work(message):
-    user_id = message.from_user.id
-    if not check_mandatory_join(user_id):
-        bot.send_message(user_id, "❌ **কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন!**")
-        return
-
-    ig_user, ig_pass = generate_credentials()
-    user_active_task[user_id] = {"username": ig_user, "password": ig_pass, "attempts": 0}
-
-    text = f"🤖 **নতুন কাজের তথ্য:**\n\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nআইডি খুলে 2FA সেটআপ করে নিচের বাটনে ক্লিক করুন।"
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔑 2FA Set", callback_data="get_2fa"))
-    markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
-    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_task")
 def cancel_task_action(call):
@@ -312,15 +325,22 @@ def finish_account_submission(call):
 
     bot.send_message(user_id, "✅ **কাজ জমা নেওয়া হয়েছে!** ৬ ঘণ্টার মধ্যে চেক করে টাকা যোগ করা হবে।", parse_mode="Markdown")
 
-# ==================== WITHDRAW & OTHER BUTTONS ====================
+# ==================== WITHDRAW SYSTEM ====================
 user_withdraw_data = {}
 
+@bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
 def handle_balance(message):
     user_id = message.from_user.id
+    
+    if get_setting("bot_status", "ON") == "OFF" and not is_admin(user_id):
+        bot.send_message(user_id, "⚠️ **বট বর্তমানে রক্ষণাবেক্ষণের (Maintenance) জন্য বন্ধ আছে।**", parse_mode="Markdown")
+        return
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    bal = cursor.fetchone()[0] or 0.0
+    res = cursor.fetchone()
+    bal = res[0] if res else 0.0
     cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'PENDING'", (user_id,))
     pending = cursor.fetchone()[0]
     conn.close()
@@ -406,37 +426,8 @@ def handle_withdraw_approval(call):
         except Exception: pass
         bot.edit_message_text(call.message.text + "\n\nSTATUS: ❌ **REJECTED**", call.message.chat.id, call.message.message_id)
 
-def handle_report(message):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'APPROVED'", (message.from_user.id,))
-    app = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'PENDING'", (message.from_user.id,))
-    pen = cursor.fetchone()[0]
-    conn.close()
-    bot.send_message(message.from_user.id, f"📈 **রিপোর্ট:**\n\n✅ সফল: {app} টি\n⏳ পেন্ডিং: {pen} টি", parse_mode="Markdown")
-
-def handle_ref(message):
-    bot_info = bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
-    text = f"{get_setting('ref_msg')}\n\n🔗 **আপনার রেফার লিংক:**\n`{ref_link}`"
-    bot.send_message(message.from_user.id, text, parse_mode="Markdown")
-
-def handle_helpline(message):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"))
-    bot.send_message(message.from_user.id, get_setting("helpline_msg"), reply_markup=markup, parse_mode="Markdown")
-
-def handle_video_guide(message):
-    v_link = get_setting("video_link", "NO_LINK")
-    markup = types.InlineKeyboardMarkup()
-    if v_link != "NO_LINK":
-        markup.add(types.InlineKeyboardButton("🎥 কাজের ভিডিও টিউটোরিয়াল", url=v_link))
-    else:
-        markup.add(types.InlineKeyboardButton("🎥 কাজের ভিডিও শীঘ্রই আসছে...", callback_data="none"))
-    bot.send_message(message.from_user.id, "🎬 **ভিডিও গাইড:**", reply_markup=markup, parse_mode="Markdown")
-
 # ==================== ADVANCED DYNAMIC ADMIN DASHBOARD ====================
+@bot.message_handler(commands=['admin'])
 def admin_dashboard(message):
     if not is_admin(message.from_user.id): return
     
@@ -569,5 +560,5 @@ def process_broadcast(message):
     bot.send_message(message.chat.id, f"✅ **মোট {count} জন ইউজারের কাছে মেসেজ পাঠানো হয়েছে!**")
 
 if __name__ == "__main__":
-    print("🤖 Dashboard Bot Active...")
+    print("🤖 Bot Active with Fixed Button Handlers...")
     bot.infinity_polling(skip_pending=True)
