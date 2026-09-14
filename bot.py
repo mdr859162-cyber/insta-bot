@@ -225,9 +225,14 @@ def process_2fa_input(message):
         bot.send_message(user_id, "⏱ **৫ মিনিট সময় পার হয়ে গেছে!** নতুন ইউজারনেম-পাসওয়ার্ড নিয়ে আবার চেষ্টা করুন।")
         return
 
-    secret_key = message.text.strip().replace(" ", "")
+    secret_key = message.text.strip().replace(" ", "").upper()
 
     try:
+        # সিক্রেট কি-র দৈর্ঘ্য চেক (Standard Base32 2FA Key সাধারণত ১৬ বা তার বেশি ক্যারেক্টারের হয়ে থাকে)
+        if len(secret_key) < 16:
+            raise ValueError("Invalid Key Length")
+
+        # pyotp দিয়ে সঠিক TOTP কোড তৈরি করা ও Base32 ফরম্যাট টেস্ট করা
         totp = pyotp.TOTP(secret_key)
         totp_code = totp.now()
         
@@ -245,11 +250,11 @@ def process_2fa_input(message):
 🔢 **আপনার ইনস্টাগ্রাম কোড:** `{totp_code}`
 
 ⏳ **আপনার কাজটি পেন্ডিং এ আছে!** 
-দয়া করে ১২ থেকে ২৪ ঘণ্টা অপেক্ষা করুন। এই সময়ের মধ্যে স্বয়ংক্রিয় ৩-ধাপের যাচাই শেষে ১০০% ভ্যালিড কাজ অ্যাকাউন্টে এপ্রুভ হয়ে যাবে।"""
+দয়া করে ১২ থেকে ২৪ ঘণ্টা অপেক্ষা করুন। এই সময়ের মধ্যে স্বয়ংক্রিয় যাচাই শেষে অ্যাকাউন্টে পেমেন্ট যুক্ত হবে।"""
         bot.send_message(user_id, text, parse_mode="Markdown")
 
     except Exception:
-        bot.send_message(user_id, "❌ **কোনো সঠিক তথ্য পাওয়া যায়নি!**\nদয়া করে নতুন পাসওয়ার্ড এবং ইউজার নেম নিয়ে আবার কাজ শুরু করুন।", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ **সঠিক 2FA Secret Key প্রদান করুন!**\nদয়া করে ইনস্টাগ্রাম থেকে পাওয়া সঠিক সিক্রেট কি-টি কপি করে দিন। ভুয়া বা মনগড়া লেখা গ্রহণযোগ্য নয়।", parse_mode="Markdown")
 
 # ==================== OTHER BUTTON HANDLERS ====================
 @bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
@@ -386,7 +391,6 @@ def admin_download_stock(call):
     conn = get_db()
     cursor = conn.cursor()
     
-    # পেন্ডিং টাস্ক ও তাদের ইউজারদের সংগ্রহ করা
     cursor.execute("SELECT id, user_id, ig_username, ig_password, secret_key FROM tasks WHERE status = 'PENDING'")
     rows = cursor.fetchall()
 
@@ -395,7 +399,6 @@ def admin_download_stock(call):
         conn.close()
         return
 
-    # শুধু Username, Password এবং Secret Key দিয়ে এক্সেল ফাইল তৈরি
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Username", "Password", "Secret Key"])
@@ -407,26 +410,18 @@ def admin_download_stock(call):
         task_ids_to_delete.append(t_id)
         ws.append([ig_un, ig_pw, sec_key])
 
-        # প্রথম কাজের রেফারেল প্রসেসিং (ফেক বনাম অরিজিনাল রেফারেল চেক)
         cursor.execute("SELECT referred_by, first_task_approved FROM users WHERE user_id = ?", (u_id,))
         u_info = cursor.fetchone()
         
         if u_info:
             ref_by, first_app = u_info
             
-            # যদি ইউজারের এটি প্রথম সফল কাজ হয়
             if first_app == 0:
                 cursor.execute("UPDATE users SET first_task_approved = 1 WHERE user_id = ?", (u_id,))
                 
                 if ref_by:
-                    # ফেক রেফারেল চেক: একই রেফারার বা সিস্টেম ঘাপলা
-                    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (ref_by,))
-                    ref_exists = cursor.fetchone()
-                    
-                    # যদি রেফার ফেক বলে পরিগণিত হয় (যেমন একই একাউন্ট বা সিস্টেম ট্রেসিং)
-                    # উদাহরণ স্বরূপ চেক: রেফারার ও ইউজার আইডি যদি একই রেঞ্জে ফেক অ্যাকাউন্ট মনে হয়
                     is_fake = False
-                    if ref_by == u_id:  # নিজের লিংকে নিজের অ্যাকাউন্ট
+                    if ref_by == u_id:
                         is_fake = True
                     
                     if is_fake:
@@ -436,7 +431,6 @@ def admin_download_stock(call):
                         except Exception:
                             pass
                     else:
-                        # অরিজিনাল রেফার হলে রেফারার পাবে ৳১০
                         cursor.execute("UPDATE users SET balance = balance + 10 WHERE user_id = ?", (ref_by,))
                         try:
                             success_msg = "🎉 **আপনার রেফারটি সফলভাবে কাউন্ট করা হয়েছে!**\nআপনার রেফারে যুক্ত ইউজারের প্রথম কাজটি এপ্রুভ হওয়ার জন্য আপনি পেয়ে গেছেন **৳১০ বোনাস**! 💸"
@@ -444,12 +438,10 @@ def admin_download_stock(call):
                         except Exception:
                             pass
 
-    # স্টক থেকে ডাটা সম্পূর্ণ ডিলিট বা ক্লিয়ার
     cursor.execute(f"DELETE FROM tasks WHERE id IN ({','.join(['?']*len(task_ids_to_delete))})", task_ids_to_delete)
     conn.commit()
     conn.close()
 
-    # এক্সেল ফাইল পাঠাবে এডমিনকে
     bio = io.BytesIO()
     wb.save(bio)
     bio.seek(0)
