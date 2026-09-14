@@ -10,12 +10,11 @@ import openpyxl
 
 # ==================== CONFIGURATION ====================
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
-SUPPORT_GROUP = "https://t.me/instaXhubsaport"
-ADMIN_USERNAME = "@Adiminsaport"
+SUPPORT_GROUP = "https://t.me/instaXhubsaport" # সাপোর্ট গ্রুপ লিংক
+ADMIN_USERNAME = "@Adiminsaport"               # এডমিন ইউজারনেম
 ADMIN_IDS = [8422485324]
 
-CHANNEL_USERNAME = "@instaXhubsaport"
-CHANNEL_LINK = "https://t.me/instaXhubsaport"
+GROUP_CHAT_ID = "@instaXhubsaport"             # বাধ্যতামূলক জয়েন চ্যানেল/গ্রুপ
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -84,12 +83,12 @@ def generate_credentials():
 
 def check_mandatory_join(user_id):
     try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        member = bot.get_chat_member(GROUP_CHAT_ID, user_id)
         return member.status in ['creator', 'administrator', 'member']
     except Exception:
         return False
 
-# ==================== MAIN MENU (EXACT MATCH TO SCREENSHOT) ====================
+# ==================== MAIN MENU ====================
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("💼 কাজ শুরু করুন 🚀")
@@ -106,7 +105,7 @@ def main_menu():
     markup.add(btn7)
     return markup
 
-# ==================== START COMMAND ====================
+# ==================== START COMMAND & JOIN FLOW ====================
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     user_id = message.from_user.id
@@ -124,12 +123,11 @@ def start_cmd(message):
         conn.commit()
     conn.close()
 
-    # Welcome message with inline Start button (Image 1 style)
     welcome_text = """✨ **আসসালামু আলাইকুম! INSTAXHUB বটে আপনাকে স্বাগতম** 🌟
 
 💼 আমাদের বটে ইনস্টাগ্রাম একাউন্ট ক্রিয়েট করে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।
 
-👉 **কাজ শুরু করতে নিচের '▶️ Start' বাটনে ক্লিক করুন!** 🚀"""
+👉 **কাজ শুরু করতে নিচের '▶️ Start 🚀' বাটনে ক্লিক করুন!**"""
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
@@ -142,10 +140,10 @@ def process_start_click(call):
     if check_mandatory_join(user_id):
         bot.send_message(user_id, "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇", reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল চ্যানেলে যুক্ত হতে হবে!** 📣"
+        text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হতে হবে!** 📣"
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=CHANNEL_LINK),
+            types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=SUPPORT_GROUP),
             types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_join")
         )
         bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
@@ -167,7 +165,7 @@ def handle_work(message):
     user_id = message.from_user.id
     
     if not check_mandatory_join(user_id):
-        bot.send_message(user_id, "❌ কাজ করতে হলে আগে বাধ্যতামূলক সাপোর্ট গ্রুপে জয়েন করুন! /start চাপুন।")
+        bot.send_message(user_id, "❌ কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন! /start চাপুন।")
         return
 
     ig_user, ig_pass = generate_credentials()
@@ -209,7 +207,7 @@ def ask_2fa_key(call):
         bot.send_message(user_id, "❌ সেশন আউট হয়ে গেছে! নতুন কাজ নিতে '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।")
         return
         
-    bot.send_message(user_id, "📥 **আপনার 2FA Secret Key-টি এখানে পাঠিয়ে দিন:**\n*(উদাহরণ: `JBSWY3DPEHPK3PXP`)*", parse_mode="Markdown")
+    bot.send_message(user_id, "📥 **আপনার 2FA Secret Key-টি পাঠান:**\n*(উদাহরণ: `JBSWY3DPEHPK3PXP`)*", parse_mode="Markdown")
     bot.register_next_step_handler(call.message, process_2fa_input)
 
 def process_2fa_input(message):
@@ -221,7 +219,7 @@ def process_2fa_input(message):
 
     if time.time() - user_active_task[user_id]["start_time"] > 300:
         del user_active_task[user_id]
-        bot.send_message(user_id, "⏱ **৫ মিনিট সময় পার হয়ে গেছে!** ডাটা ক্লিয়ার করা হয়েছে, নতুন ইউজারনেম-পাসওয়ার্ড নিয়ে আবার চেষ্টা করুন।")
+        bot.send_message(user_id, "⏱ **৫ মিনিট সময় পার হয়ে গেছে!** নতুন ইউজারনেম-পাসওয়ার্ড নিয়ে আবার চেষ্টা করুন।")
         return
 
     secret_key = message.text.strip().replace(" ", "")
@@ -270,7 +268,7 @@ def handle_balance(message):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("বিকাশ", callback_data="wd_bkash"),
                types.InlineKeyboardButton("নগদ", callback_data="wd_nagad"))
-    bot.send_message(user_id, f"{text}\n\n💳 **উইথড্র করতে চ্যানেল পছন্দ করুন (সর্বনিম্ন ৳{min_wd}):**", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(user_id, f"{text}\n\n💳 **উইথড্র করতে মেথড পছন্দ করুন (সর্বনিম্ন ৳{min_wd}):**", reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "📊 কাজের রিপোর্ট 📈")
 def handle_report(message):
@@ -294,17 +292,31 @@ def handle_ref(message):
     bot_info = bot.get_me()
     bot.send_message(message.from_user.id, f"🔗 **আপনার রেফারেল লিংক:**\nhttps://t.me/{bot_info.username}?start={message.from_user.id}", parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text in ["🎬 আমি নতুন (কাজের ভিডিও) 🎬", "🆘 হেল্পলাইন 📞"])
-def handle_support(message):
+# ১. কেবল হেল্পলাইন বাটন (শুধু এডমিন আইডি থাকবে)
+@bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
+def handle_helpline(message):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"))
+    bot.send_message(message.from_user.id, "🎧 **আমাদের সরাসরি এডমিন সহায়তার জন্য নিচে যোগাযোগ করুন:**", reply_markup=markup, parse_mode="Markdown")
+
+# ২. কেবল কাজের ভিডিও বাটন
+@bot.message_handler(func=lambda msg: msg.text == "🎬 আমি নতুন (কাজের ভিডিও) 🎬")
+def handle_video_guide(message):
     v_link = get_setting("video_link", "NO_LINK")
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"),
-               types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপ", url=SUPPORT_GROUP))
+    
     if v_link != "NO_LINK":
-        markup.add(types.InlineKeyboardButton("🎥 নতুনদের জন্য ভিডিও গাইড", url=v_link))
-    bot.send_message(message.from_user.id, "🎧 **আমাদের হেল্পলাইন ও ভিডিও গাইড:**", reply_markup=markup, parse_mode="Markdown")
+        markup.add(types.InlineKeyboardButton("🎥 নতুনদের কাজের ভিডিও টিউটোরিয়াল", url=v_link))
+    else:
+        markup.add(types.InlineKeyboardButton("🎥 খুব শীঘ্রই কাজের ভিডিও আসতেছে...", callback_data="no_video"))
 
-# ==================== ADMIN PANEL ====================
+    bot.send_message(message.from_user.id, "🎬 **কাজ শেখার ভিডিও লিংক:**", reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "no_video")
+def callback_no_video(call):
+    bot.answer_callback_query(call.id, "🎥 কাজের ভিডিও খুব শীঘ্রই আপলোড করা হবে!", show_alert=True)
+
+# ==================== FIXED ADMIN PANEL ====================
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if not is_admin(message.from_user.id): return
@@ -315,7 +327,69 @@ def admin_panel(message):
         types.InlineKeyboardButton("📜 Update Notice", callback_data="admin_set_notice"),
         types.InlineKeyboardButton("💰 Min Withdraw", callback_data="admin_set_min_wd")
     )
-    bot.send_message(message.from_user.id, "🛠 **ADMIN PANEL**", reply_markup=markup)
+    bot.send_message(message.from_user.id, "🛠 **ADMIN PANEL CONTROL**", reply_markup=markup)
+
+# Admin Handlers Fix
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_video")
+def admin_add_video_cb(call):
+    if not is_admin(call.from_user.id): return
+    bot.send_message(call.from_user.id, "🎥 **নতুন কাজের ভিডিও লিংকটি পাঠাও:**")
+    bot.register_next_step_handler(call.message, save_video_link)
+
+def save_video_link(message):
+    set_setting("video_link", message.text.strip())
+    bot.send_message(message.chat.id, "✅ **ভিডিও লিংক সফলভাবে আপডেট করা হয়েছে!**")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_notice")
+def admin_set_notice_cb(call):
+    if not is_admin(call.from_user.id): return
+    bot.send_message(call.from_user.id, "📜 **নতুন কাজের নিয়ম বা নোটিশটি লিখে পাঠাও:**")
+    bot.register_next_step_handler(call.message, save_notice)
+
+def save_notice(message):
+    set_setting("notice", message.text.strip())
+    bot.send_message(message.chat.id, "✅ **নোটিশ সফলভাবে পরিবর্তন করা হয়েছে!**")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_min_wd")
+def admin_set_min_wd_cb(call):
+    if not is_admin(call.from_user.id): return
+    bot.send_message(call.from_user.id, "💰 **সর্বনিম্ন উইথড্র পরিমাণ কত টাকা রাখতে চাও? (যেমন: 100):**")
+    bot.register_next_step_handler(call.message, save_min_wd)
+
+def save_min_wd(message):
+    set_setting("min_withdraw", message.text.strip())
+    bot.send_message(message.chat.id, "✅ **সর্বনিম্ন উইথড্র মান সফলভাবে সেভ করা হয়েছে!**")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_download_stock")
+def admin_download_stock(call):
+    if not is_admin(call.from_user.id): return
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, ig_username, ig_password, secret_key FROM tasks WHERE status = 'PENDING'")
+    rows = cursor.fetchall()
+
+    if not rows:
+        bot.answer_callback_query(call.id, "❌ কোনো কাজ পেন্ডিং স্টক নেই!", show_alert=True)
+        conn.close()
+        return
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Username", "Password", "Secret Key"])
+    
+    t_ids = []
+    for r in rows:
+        t_ids.append(r[0])
+        ws.append([r[1], r[2], r[3]])
+
+    cursor.execute(f"UPDATE tasks SET status = 'APPROVED' WHERE id IN ({','.join(['?']*len(t_ids))})", t_ids)
+    conn.commit()
+    conn.close()
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    bot.send_document(call.from_user.id, bio, visible_file_name="Instagram_Stock.xlsx", caption="✅ **স্টক ডাউনলোডেড!**")
 
 if __name__ == "__main__":
     print("🤖 Bot is active...")
