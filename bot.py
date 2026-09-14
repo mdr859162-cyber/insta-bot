@@ -228,11 +228,9 @@ def process_2fa_input(message):
     secret_key = message.text.strip().replace(" ", "").upper()
 
     try:
-        # সিক্রেট কি-র দৈর্ঘ্য চেক (Standard Base32 2FA Key সাধারণত ১৬ বা তার বেশি ক্যারেক্টারের হয়ে থাকে)
         if len(secret_key) < 16:
             raise ValueError("Invalid Key Length")
 
-        # pyotp দিয়ে সঠিক TOTP কোড তৈরি করা ও Base32 ফরম্যাট টেস্ট করা
         totp = pyotp.TOTP(secret_key)
         totp_code = totp.now()
         
@@ -256,7 +254,9 @@ def process_2fa_input(message):
     except Exception:
         bot.send_message(user_id, "❌ **সঠিক 2FA Secret Key প্রদান করুন!**\nদয়া করে ইনস্টাগ্রাম থেকে পাওয়া সঠিক সিক্রেট কি-টি কপি করে দিন। ভুয়া বা মনগড়া লেখা গ্রহণযোগ্য নয়।", parse_mode="Markdown")
 
-# ==================== OTHER BUTTON HANDLERS ====================
+# ==================== OTHER BUTTON HANDLERS & WITHDRAW ====================
+user_withdraw_data = {}
+
 @bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
 def handle_balance(message):
     user_id = message.from_user.id
@@ -277,6 +277,81 @@ def handle_balance(message):
     markup.add(types.InlineKeyboardButton("বিকাশ", callback_data="wd_bkash"),
                types.InlineKeyboardButton("নগদ", callback_data="wd_nagad"))
     bot.send_message(user_id, f"{text}\n\n💳 **উইথড্র করতে মেথড পছন্দ করুন (সর্বনিম্ন ৳{min_wd}):**", reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data in ["wd_bkash", "wd_nagad"])
+def process_withdraw_method(call):
+    user_id = call.from_user.id
+    method = "বিকাশ" if call.data == "wd_bkash" else "নগদ"
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    conn.close()
+    
+    balance = res[0] if res else 0.0
+    min_wd = float(get_setting("min_withdraw", "100"))
+
+    if balance < min_wd:
+        bot.answer_callback_query(call.id, f"❌ আপনার পর্যাপ্ত ব্যালেন্স নেই! সর্বনিম্ন উইথড্র ৳{min_wd:.0f}", show_alert=True)
+        return
+
+    user_withdraw_data[user_id] = {"method": method, "balance": balance, "min_wd": min_wd}
+    
+    bot.send_message(user_id, f"📱 **আপনার {method} নম্বরটি লিখে পাঠান:**", parse_mode="Markdown")
+    bot.register_next_step_handler(call.message, get_withdraw_number)
+
+def get_withdraw_number(message):
+    user_id = message.from_user.id
+    if user_id not in user_withdraw_data:
+        bot.send_message(user_id, "❌ উইথড্র সেশন শেষ হয়ে গেছে! আবার চেষ্টা করুন।")
+        return
+    
+    phone_number = message.text.strip()
+    user_withdraw_data[user_id]["number"] = phone_number
+    
+    min_wd = user_withdraw_data[user_id]["min_wd"]
+    balance = user_withdraw_data[user_id]["balance"]
+    
+    bot.send_message(user_id, f"💵 **কত টাকা উইথড্র করতে চান?**\n\n💰 আপনার ব্যালেন্স: ৳{balance:.2f}\n🔻 সর্বনিম্ন উইথড্র: ৳{min_wd:.0f}", parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_withdraw_amount)
+
+def process_withdraw_amount(message):
+    user_id = message.from_user.id
+    if user_id not in user_withdraw_data:
+        bot.send_message(user_id, "❌ উইথড্র সেশন শেষ হয়ে গেছে! আবার চেষ্টা করুন।")
+        return
+        
+    try:
+        amount = float(message.text.strip())
+        wd_info = user_withdraw_data.pop(user_id)
+        
+        if amount < wd_info["min_wd"]:
+            bot.send_message(user_id, f"❌ **সর্বনিম্ন উইথড্র পরিমাণ ৳{wd_info['min_wd']:.0f} টাকা!**")
+            return
+            
+        if amount > wd_info["balance"]:
+            bot.send_message(user_id, "❌ **আপনার অ্যাকাউন্টে এত ব্যালেন্স নেই!**")
+            return
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user_id))
+        conn.commit()
+        conn.close()
+
+        bot.send_message(user_id, f"✅ **আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা নেওয়া হয়েছে!**\n\n💳 **মেথড:** {wd_info['method']}\n📱 **নম্বর:** `{wd_info['number']}`\n💵 **পরিমাণ:** ৳{amount:.2f}\n\n⏳ খুব শীঘ্রই এডমিন আপনার পেমেন্টটি প্রসেস করবে।", parse_mode="Markdown")
+
+        # Admin Notification
+        admin_msg = f"📩 **নতুন উইথড্র রিকোয়েস্ট!**\n\n👤 **ইউজার ID:** `{user_id}`\n💳 **মেথড:** {wd_info['method']}\n📱 **নম্বর:** `{wd_info['number']}`\n💵 **পরিমাণ:** ৳{amount:.2f}"
+        for admin_id in ADMIN_IDS:
+            try:
+                bot.send_message(admin_id, admin_msg, parse_mode="Markdown")
+            except Exception:
+                pass
+
+    except ValueError:
+        bot.send_message(user_id, "❌ **দয়া করে সঠিক অংকে টাকার পরিমাণ লিখুন!** (যেমন: 100)")
 
 @bot.message_handler(func=lambda msg: msg.text == "📊 কাজের রিপোর্ট 📈")
 def handle_report(message):
