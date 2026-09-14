@@ -17,7 +17,6 @@ ADMIN_IDS = [8422485324]
 GROUP_CHAT_ID = "@instaXhubsaport"             # বাধ্যতামূলক জয়েন চ্যানেল/গ্রুপ
 
 # ==================== BOT INITIALIZATION ====================
-# (এটি সব হ্যান্ডলারের উপরে থাকতে হবে, তা না হলে NameError আসবে)
 bot = telebot.TeleBot(TOKEN)
 
 # ==================== DATABASE SETUP ====================
@@ -139,16 +138,13 @@ def start_cmd(message):
 def process_start_click(call):
     user_id = call.from_user.id
     
-    if check_mandatory_join(user_id):
-        bot.send_message(user_id, "🎉 **ধন্যবাদ আমাদের সঙ্গে যুক্ত হওয়ার জন্য এবং এখন আপনি স্বাভাবিকভাবে কাজ করতে পারবেন।** 👇", reply_markup=main_menu(), parse_mode="Markdown")
-    else:
-        text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হতে হবে!** 📣"
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=SUPPORT_GROUP),
-            types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_join")
-        )
-        bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+    text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হতে হবে!** 📣"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=SUPPORT_GROUP),
+        types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_join")
+    )
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_join")
 def callback_check_join(call):
@@ -355,7 +351,7 @@ def save_notice(message):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_min_wd")
 def admin_set_min_wd_cb(call):
     if not is_admin(call.from_user.id): return
-    bot.send_message(call.from_user.id, "💰 **সর্বনিম্ন উইথড্র পরিমাণ কত টাকা রাখতে চাও? (যেমন: 100):**")
+    bot.send_message(call.from_user.id, "💰 **সর্বনিম্ন উইথড্র পরিমাণ কত টাকা রাখতে চাও? যেমন: 100:**")
     bot.register_next_step_handler(call.message, save_min_wd)
 
 def save_min_wd(message):
