@@ -7,13 +7,12 @@ import time
 import pyotp
 import io
 import openpyxl
-from threading import Thread
 
 # ==================== CONFIGURATION ====================
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
 SUPPORT_GROUP = "https://t.me/instaXhubsaport"
 ADMIN_USERNAME = "@Adiminsaport"
-ADMIN_IDS = [8422485324]  # আপনার Telegram Numeric ID
+ADMIN_IDS = [8422485324]
 
 CHANNEL_USERNAME = "@instaXhubsaport"
 CHANNEL_LINK = "https://t.me/instaXhubsaport"
@@ -29,7 +28,6 @@ def init_db():
         user_id INTEGER PRIMARY KEY,
         username TEXT,
         balance REAL DEFAULT 0.0,
-        pending_balance REAL DEFAULT 0.0,
         referred_by INTEGER,
         joined_date INTEGER
     )''')
@@ -51,7 +49,7 @@ def init_db():
     
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('video_link', 'NO_LINK')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_withdraw', '100')")
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('notice', '📜 **কাজের নিয়মাবলী:**\n১. বট থেকে দেওয়া ইউনিক আইডি ও পাসওয়ার্ড দিয়ে একাউন্ট খুলুন।\n২. সঠিক 2FA Secret Key দিয়ে জমা দিন।\n\n⚠️ ভুয়া তথ্য দিলে একাউন্ট সাসপেন্ড করা হবে।')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('notice', '📜 **কাজের নিয়মাবলী:**\n১. বট থেকে দেওয়া ইউনিক আইডি ও পাসওয়ার্ড দিয়ে একাউন্ট খুলুন।\n২. সঠিক 2FA Secret Key দিয়ে জমা দিন।\n\n⚠️ ভুল বা ফেক কাজ জমা দিলে পেমেন্ট বন্ধ করে দেওয়া হবে।')")
     
     conn.commit()
     conn.close()
@@ -91,10 +89,21 @@ def check_mandatory_join(user_id):
     except Exception:
         return False
 
-# ==================== MAIN MENU ====================
+# ==================== MAIN MENU (EXACT MATCH TO SCREENSHOT) ====================
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("💼 কাজ", "💰 ব্যালেন্স", "💳 উইথড্র", "👥 রেফারেল", "📜 কাজের নিয়ম ও নোটিশ", "🎧 সাপোর্ট ও হেল্পলাইন")
+    btn1 = types.KeyboardButton("💼 কাজ শুরু করুন 🚀")
+    btn2 = types.KeyboardButton("💰 ব্যালেন্স & উইথড্র 💳")
+    btn3 = types.KeyboardButton("📊 কাজের রিপোর্ট 📈")
+    btn4 = types.KeyboardButton("📜 কাজের নিয়ম ⚠️")
+    btn5 = types.KeyboardButton("👥 রেফার করুন 🎁")
+    btn6 = types.KeyboardButton("🎬 আমি নতুন (কাজের ভিডিও) 🎬")
+    btn7 = types.KeyboardButton("🆘 হেল্পলাইন 📞")
+    
+    markup.add(btn1, btn2)
+    markup.add(btn3, btn4)
+    markup.add(btn5, btn6)
+    markup.add(btn7)
     return markup
 
 # ==================== START COMMAND ====================
@@ -115,32 +124,50 @@ def start_cmd(message):
         conn.commit()
     conn.close()
 
-    if not check_mandatory_join(user_id):
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("📢 সাপোর্ট গ্রুপে জয়েন করুন", url=CHANNEL_LINK))
-        markup.add(types.InlineKeyboardButton("✅ জয়েন সম্পন্ন হয়েছে", callback_data="check_join"))
-        bot.send_message(user_id, "👋 **স্বাগতম!**\nকাজ শুরু করার আগে আমাদের সাপোর্ট গ্রুপে জয়েন করা বাধ্যতামূলক।", reply_markup=markup, parse_mode="Markdown")
-        return
+    # Welcome message with inline Start button (Image 1 style)
+    welcome_text = """✨ **আসসালামু আলাইকুম! INSTAXHUB বটে আপনাকে স্বাগতম** 🌟
 
-    bot.send_message(user_id, "✅ **ধন্যবাদ!** এবার আপনি নিচে দেওয়া মেনু থেকে কাজ শুরু করতে পারেন।", reply_markup=main_menu(), parse_mode="Markdown")
+💼 আমাদের বটে ইনস্টাগ্রাম একাউন্ট ক্রিয়েট করে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।
+
+👉 **কাজ শুরু করতে নিচের '▶️ Start' বাটনে ক্লিক করুন!** 🚀"""
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
+    bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "click_start")
+def process_start_click(call):
+    user_id = call.from_user.id
+    
+    if check_mandatory_join(user_id):
+        bot.send_message(user_id, "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇", reply_markup=main_menu(), parse_mode="Markdown")
+    else:
+        text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল চ্যানেলে যুক্ত হতে হবে!** 📣"
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=CHANNEL_LINK),
+            types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_join")
+        )
+        bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_join")
 def callback_check_join(call):
-    if check_mandatory_join(call.from_user.id):
+    user_id = call.from_user.id
+    if check_mandatory_join(user_id):
         bot.delete_message(call.message.chat.id, call.message.message_id)
-        bot.send_message(call.from_user.id, "✅ **ধন্যবাদ!** মেনু আনলক করা হয়েছে।", reply_markup=main_menu(), parse_mode="Markdown")
+        bot.send_message(user_id, "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇", reply_markup=main_menu(), parse_mode="Markdown")
     else:
         bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে জয়েন করুন।", show_alert=True)
 
-# ==================== WORK & VALIDATION FLOW ====================
+# ==================== WORK FLOW ====================
 user_active_task = {}
 
-@bot.message_handler(func=lambda msg: msg.text == "💼 কাজ")
+@bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
 def handle_work(message):
     user_id = message.from_user.id
     
     if not check_mandatory_join(user_id):
-        bot.send_message(user_id, "❌ কাজ করতে হলে আগে সাপোর্ট গ্রুপে যুক্ত হোন! /start চাপুন।")
+        bot.send_message(user_id, "❌ কাজ করতে হলে আগে বাধ্যতামূলক সাপোর্ট গ্রুপে জয়েন করুন! /start চাপুন।")
         return
 
     ig_user, ig_pass = generate_credentials()
@@ -171,36 +198,34 @@ def cancel_task_action(call):
     user_id = call.from_user.id
     if user_id in user_active_task:
         del user_active_task[user_id]
-        bot.edit_message_text("❌ **আপনার কাজ সফলভাবে বাতিল করা হয়েছে।** বটের ডাটা ক্লিয়ার করা হলো।", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("❌ **আপনার কাজ বাতিল করা হয়েছে।** বটের ডাটা ক্লিয়ার করা হলো।", call.message.chat.id, call.message.message_id)
     else:
-        bot.answer_callback_query(call.id, "কোনো সেশন সক্রিয় নেই!", show_alert=True)
+        bot.answer_callback_query(call.id, "কোনো কাজ সক্রিয় নেই!", show_alert=True)
 
 @bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
 def ask_2fa_key(call):
     user_id = call.from_user.id
     if user_id not in user_active_task:
-        bot.send_message(user_id, "❌ সেশন আউট হয়ে গেছে! নতুন কাজ নিতে '💼 কাজ' বাটনে চাপ দিন।")
+        bot.send_message(user_id, "❌ সেশন আউট হয়ে গেছে! নতুন কাজ নিতে '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।")
         return
         
-    bot.send_message(user_id, "📥 **আপনার ২১/১৬ ডিজিটের 2FA Secret Key-টি পাঠান:**\n*(উদাহরণ: `JBSWY3DPEHPK3PXP`)*", parse_mode="Markdown")
+    bot.send_message(user_id, "📥 **আপনার 2FA Secret Key-টি এখানে পাঠিয়ে দিন:**\n*(উদাহরণ: `JBSWY3DPEHPK3PXP`)*", parse_mode="Markdown")
     bot.register_next_step_handler(call.message, process_2fa_input)
 
 def process_2fa_input(message):
     user_id = message.from_user.id
     
     if user_id not in user_active_task:
-        bot.send_message(user_id, "❌ কাজের সময়সীমা অতিক্রম করেছে। নতুন কাজ নিন।")
+        bot.send_message(user_id, "❌ কাজের সময়সীমা পার হয়ে গেছে।")
         return
 
-    # ৫ মিনিট টাইম চেকিং
     if time.time() - user_active_task[user_id]["start_time"] > 300:
         del user_active_task[user_id]
-        bot.send_message(user_id, "⏱ **আপনার কাজের ৫ মিনিট সময় শেষ হয়ে গেছে!** ডাটা ক্লিয়ার করা হয়েছে, দয়া করে নতুন আইডি ও পাসওয়ার্ড নিয়ে কাজ শুরু করুন।")
+        bot.send_message(user_id, "⏱ **৫ মিনিট সময় পার হয়ে গেছে!** ডাটা ক্লিয়ার করা হয়েছে, নতুন ইউজারনেম-পাসওয়ার্ড নিয়ে আবার চেষ্টা করুন।")
         return
 
     secret_key = message.text.strip().replace(" ", "")
 
-    # ১-স্টেজ রিয়েল-টাইম ভ্যালিডেশন টেস্ট
     try:
         totp = pyotp.TOTP(secret_key)
         totp_code = totp.now()
@@ -219,14 +244,14 @@ def process_2fa_input(message):
 🔢 **আপনার ইনস্টাগ্রাম কোড:** `{totp_code}`
 
 ⏳ **আপনার কাজটি পেন্ডিং এ আছে!** 
-দয়া করে ১২ থেকে ২৪ ঘণ্টা অপেক্ষা করুন। এই সময়ের মধ্যে স্বয়ংক্রিয় রি-চেকিং ও চূড়ান্ত যাচাই শেষে অ্যাকাউন্টে পেমেন্ট যুক্ত হবে।"""
+দয়া করে ১২ থেকে ২৪ ঘণ্টা অপেক্ষা করুন। এই সময়ের মধ্যে স্বয়ংক্রিয় যাচাই শেষে অ্যাকাউন্টে পেমেন্ট যুক্ত হবে।"""
         bot.send_message(user_id, text, parse_mode="Markdown")
 
     except Exception:
-        bot.send_message(user_id, "❌ **কোনো বৈধ তথ্য পাওয়া যায়নি!**\nদয়া করে নতুন পাসওয়ার্ড এবং ইউজার নেম নিয়ে সঠিকভাবে কাজ শুরু করুন।", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ **কোনো তথ্য পাওয়া যায়নি!**\nদয়া করে নতুন পাসওয়ার্ড এবং ইউজার নেম নিয়ে কাজ শুরু করুন।", parse_mode="Markdown")
 
-# ==================== BALANCE & WITHDRAW ====================
-@bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স")
+# ==================== OTHER BUTTON HANDLERS ====================
+@bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
 def handle_balance(message):
     user_id = message.from_user.id
     conn = get_db()
@@ -239,86 +264,47 @@ def handle_balance(message):
     conn.close()
 
     b_val = bal[0] if bal else 0.0
-    text = f"📊 **অ্যাকাউন্ট তথ্য:**\n\n💰 **বর্তমান ব্যালেন্স:** ৳{b_val:.2f}\n⏳ **পেন্ডিং কাজ:** {pending_cnt} টি"
-    bot.send_message(user_id, text, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "💳 উইথড্র")
-def handle_withdraw(message):
+    text = f"📊 **আপনার অ্যাকাউন্ট তথ্য:**\n\n💰 **বর্তমান ব্যালেন্স:** ৳{b_val:.2f}\n⏳ **পেন্ডিং কাজ:** {pending_cnt} টি"
+    
     min_wd = get_setting("min_withdraw", "100")
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("বিকাশ", callback_data="wd_bkash"),
                types.InlineKeyboardButton("নগদ", callback_data="wd_nagad"))
-    bot.send_message(message.from_user.id, f"💳 **উইথড্র মাধ্যম নির্বাচন করুন:**\n*(সর্বনিম্ন উইথড্র ৳{min_wd})*", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(user_id, f"{text}\n\n💳 **উইথড্র করতে চ্যানেল পছন্দ করুন (সর্বনিম্ন ৳{min_wd}):**", reply_markup=markup, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda call: call.data in ["wd_bkash", "wd_nagad"])
-def process_withdraw_method(call):
-    method = "বিকাশ" if call.data == "wd_bkash" else "নগদ"
-    user_id = call.from_user.id
-    min_wd = float(get_setting("min_withdraw", "100"))
-    
+@bot.message_handler(func=lambda msg: msg.text == "📊 কাজের রিপোর্ট 📈")
+def handle_report(message):
+    user_id = message.from_user.id
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    bal = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'APPROVED'", (user_id,))
+    app_cnt = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'PENDING'", (user_id,))
+    pen_cnt = cursor.fetchone()[0]
     conn.close()
 
-    if bal < min_wd:
-        bot.send_message(user_id, f"❌ **ব্যালেন্স পর্যাপ্ত নয়!** সর্বনিম্ন উইথড্র ৳{min_wd}")
-        return
+    bot.send_message(user_id, f"📈 **আপনার কাজের রিপোর্ট:**\n\n✅ **সফল কাজ:** {app_cnt} টি\n⏳ **পেন্ডিং কাজ:** {pen_cnt} টি", parse_mode="Markdown")
 
-    bot.send_message(user_id, f"📱 **{method}** নাম্বার ও পরিমাণ লিখুন:\n*(যেমন: `01712345678 150`)*", parse_mode="Markdown")
-    bot.register_next_step_handler(call.message, lambda m: send_wd_request(m, method, min_wd))
-
-def send_wd_request(message, method, min_wd):
-    user_id = message.from_user.id
-    try:
-        parts = message.text.split()
-        num, amount = parts[0], float(parts[1])
-
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-        bal = cursor.fetchone()[0]
-
-        if amount < min_wd or amount > bal:
-            bot.send_message(user_id, "❌ **অবৈধ পরিমাণ!** চেষ্টা সফল হয়নি।")
-            conn.close()
-            return
-
-        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user_id))
-        conn.commit()
-        conn.close()
-
-        bot.send_message(user_id, "⏳ **উইথড্র রিকোয়েস্ট জমা হয়েছে।**")
-
-        for admin_id in ADMIN_IDS:
-            admin_markup = types.InlineKeyboardMarkup()
-            admin_markup.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"app_wd_{user_id}_{amount}"),
-                             types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_wd_{user_id}_{amount}"))
-            bot.send_message(admin_id, f"🔔 **উইথড্র রিকোয়েস্ট!**\n\n👤 **User:** `{user_id}`\n📱 **Method:** {method}\n📞 **Number:** `{num}`\n💰 **Amount:** ৳{amount}", reply_markup=admin_markup, parse_mode="Markdown")
-    except Exception:
-        bot.send_message(user_id, "❌ **ভুল ফরম্যাট!** নিয়ম মেনে লিখুন।")
-
-# ==================== OTHERS & ADMIN PANEL ====================
-@bot.message_handler(func=lambda msg: msg.text == "👥 রেফারেল")
-def handle_ref(message):
-    bot_info = bot.get_me()
-    bot.send_message(message.from_user.id, f"🔗 **রেফারেল লিংক:**\nhttps://t.me/{bot_info.username}?start={message.from_user.id}", parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "📜 কাজের নিয়ম ও নোটিশ")
+@bot.message_handler(func=lambda msg: msg.text == "📜 কাজের নিয়ম ⚠️")
 def handle_notice(message):
     bot.send_message(message.from_user.id, get_setting("notice"), parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🎧 সাপোর্ট ও হেল্পলাইন")
+@bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
+def handle_ref(message):
+    bot_info = bot.get_me()
+    bot.send_message(message.from_user.id, f"🔗 **আপনার রেফারেল লিংক:**\nhttps://t.me/{bot_info.username}?start={message.from_user.id}", parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text in ["🎬 আমি নতুন (কাজের ভিডিও) 🎬", "🆘 হেল্পলাইন 📞"])
 def handle_support(message):
     v_link = get_setting("video_link", "NO_LINK")
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"),
                types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপ", url=SUPPORT_GROUP))
     if v_link != "NO_LINK":
-        markup.add(types.InlineKeyboardButton("🎥 কাজের ভিডিও গাইড", url=v_link))
-    bot.send_message(message.from_user.id, "🎧 **আমাদের সাপোর্ট সার্ভিস:**", reply_markup=markup, parse_mode="Markdown")
+        markup.add(types.InlineKeyboardButton("🎥 নতুনদের জন্য ভিডিও গাইড", url=v_link))
+    bot.send_message(message.from_user.id, "🎧 **আমাদের হেল্পলাইন ও ভিডিও গাইড:**", reply_markup=markup, parse_mode="Markdown")
 
+# ==================== ADMIN PANEL ====================
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if not is_admin(message.from_user.id): return
@@ -331,37 +317,6 @@ def admin_panel(message):
     )
     bot.send_message(message.from_user.id, "🛠 **ADMIN PANEL**", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "admin_download_stock")
-def admin_download_stock(call):
-    if not is_admin(call.from_user.id): return
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, ig_username, ig_password, secret_key FROM tasks WHERE status = 'PENDING'")
-    rows = cursor.fetchall()
-
-    if not rows:
-        bot.answer_callback_query(call.id, "❌ কোনো স্টক নেই!", show_alert=True)
-        conn.close()
-        return
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.append(["Username", "Password", "Secret Key"])
-    
-    t_ids = []
-    for r in rows:
-        t_ids.append(r[0])
-        ws.append([r[1], r[2], r[3]])
-
-    cursor.execute(f"UPDATE tasks SET status = 'APPROVED' WHERE id IN ({','.join(['?']*len(t_ids))})", t_ids)
-    conn.commit()
-    conn.close()
-
-    bio = io.BytesIO()
-    wb.save(bio)
-    bio.seek(0)
-    bot.send_document(call.from_user.id, bio, visible_file_name="Instagram_Stock.xlsx", caption="✅ **স্টক ডাউনলোডেড!**")
-
 if __name__ == "__main__":
-    print("🤖 Bot Active...")
+    print("🤖 Bot is active...")
     bot.infinity_polling(skip_pending=True)
