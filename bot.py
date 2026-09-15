@@ -306,7 +306,7 @@ def handle_work(message):
 
     current_task_rate = get_setting("task_rate", "3")
     ig_user, ig_pass = generate_credentials()
-    user_active_task[user_id] = {"username": ig_user, "password": ig_pass, "attempts": 0}
+    user_active_task[user_id] = {"username": ig_user, "password": ig_pass, "attempts": 0, "msg_ids": []}
 
     text = f"🤖 **নতুন কাজের তথ্য:**\n\n💰 **এই কাজটির জন্য পাবেন:** ৳{current_task_rate}\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nআইডি খুলে 2FA সেটআপ করে নিচের বাটনে ক্লিক করুন।"
     markup = types.InlineKeyboardMarkup()
@@ -314,7 +314,7 @@ def handle_work(message):
     markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
     
     sent_msg = bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
-    user_active_task[user_id]["msg_id"] = sent_msg.message_id
+    user_active_task[user_id]["msg_ids"].append(sent_msg.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "click_start")
 def process_start_click(call):
@@ -339,32 +339,47 @@ def callback_check_join(call):
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_task")
 def cancel_task_action(call):
     user_id = call.from_user.id
+    
     if user_id in user_active_task:
+        # আগের যতগুলো টাস্ক মেসেজ ছিল সেগুলোর বাটন রিমুভ বা মেসেজ আপডেট করে দেওয়া
+        for m_id in user_active_task[user_id].get("msg_ids", []):
+            try:
+                bot.edit_message_text(
+                    "❌ **আপনার কাজটি বাতিল করা হয়েছে!**\n\nনতুন কাজের জন্য আবার '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।",
+                    call.message.chat.id,
+                    m_id,
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
         del user_active_task[user_id]
-        
-    try:
-        bot.edit_message_text(
-            "❌ **আপনার কাজটি বাতিল করা হয়েছে!**\n\nনতুন কাজের জন্য আবার '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।",
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode="Markdown"
-        )
-    except Exception:
-        bot.send_message(user_id, "❌ **আপনার কাজ বাতিল করা হয়েছে।**")
+        bot.answer_callback_query(call.id, "কাজটি বাতিল করা হয়েছে।", show_alert=False)
+    else:
+        try:
+            bot.edit_message_text(
+                "❌ **এই কাজটি আগেই বাতিল বা সম্পন্ন হয়ে গেছে!**\n\nনতুন কাজের জন্য আবার '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown"
+            )
+        except Exception:
+            bot.send_message(user_id, "❌ **আপনার কাজটি বাতিল করা হয়েছে।**")
 
 @bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
 def ask_2fa_key(call):
     user_id = call.from_user.id
     if user_id not in user_active_task:
-        bot.answer_callback_query(call.id, "এই কাজটির সেশন আউট বা বাতিল হয়ে গেছে!", show_alert=True)
+        bot.answer_callback_query(call.id, "এই কাজটি বাতিল হয়ে গেছে! নতুন কাজ শুরু করুন।", show_alert=True)
         return
     msg = bot.send_message(user_id, "🔑 **আপনার 2FA Key টি দিন:**", parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_2fa_input)
 
-# ==================== 2FA CODE COPY FIX ====================
+# ==================== 2FA CODE & CANCELLATION FIX ====================
 def process_2fa_input(message):
     user_id = message.from_user.id
-    if user_id not in user_active_task: return
+    if user_id not in user_active_task:
+        bot.send_message(user_id, "❌ **এই কাজের সেশনটি সক্রিয় নেই!** নতুন করে কাজ শুরু করুন।", parse_mode="Markdown")
+        return
 
     secret_key = message.text.strip().replace(" ", "").upper()
     try:
@@ -374,39 +389,43 @@ def process_2fa_input(message):
         
         user_active_task[user_id]["secret_key"] = secret_key
         markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(types.InlineKeyboardButton(f"📋 {totp_code}", callback_data=f"copy_{totp_code}"))
         markup.add(types.InlineKeyboardButton("✅ একাউন্ট খোলা শেষ", callback_data="finish_account"))
+        markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
         
-        # HTML <code> ট্যাগ ব্যবহার করে সম্পূর্ণ ৬ ডিজিট একসাথে কপি হওয়ার স্থায়ী সমাধান
+        # HTML <code> ট্যাগ ব্যবহার করা হয়েছে, যেন এক ক্লিকেই পুরো কোড কপি হয়
         msg_text = (
             f"🔑 <b>আপনার 2FA OTP কোড:</b>\n\n"
             f"<code>{totp_code}</code>\n\n"
-            f"<i>(কোডের ওপর একবার টাচ/ক্লিক করলেই সম্পূর্ণ কোড কপি হয়ে যাবে)</i>"
+            f"<i>👉 উপরের কোডের ওপর এক চাপ (Tap) দিলেই পুরো কোড কপি হয়ে যাবে।</i>"
         )
-        bot.send_message(user_id, msg_text, reply_markup=markup, parse_mode="HTML")
+        sent_msg = bot.send_message(user_id, msg_text, reply_markup=markup, parse_mode="HTML")
+        user_active_task[user_id]["msg_ids"].append(sent_msg.message_id)
 
     except Exception:
         user_active_task[user_id]["attempts"] += 1
         att = user_active_task[user_id]["attempts"]
         if att >= 3:
-            msg_id = user_active_task[user_id].get("msg_id")
             del user_active_task[user_id]
-            if msg_id:
-                try: bot.delete_message(message.chat.id, msg_id)
-                except Exception: pass
             bot.send_message(user_id, "❌ **পরপর ৩ বার ভুল 2FA Key দেওয়ায় কাজটি বাতিল করা হয়েছে!**", parse_mode="Markdown")
         else:
             msg = bot.send_message(user_id, f"❌ **ভুল 2FA Key!** আপনার আর মাত্র {3-att} বার সুযোগ আছে। সঠিক Key টি আবার দিন:", parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_2fa_input)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("copy_"))
-def handle_copy_code(call):
-    bot.answer_callback_query(call.id, f"কপি হয়েছে: {call.data.split('_')[1]}", show_alert=True)
-
 @bot.callback_query_handler(func=lambda call: call.data == "finish_account")
 def finish_account_submission(call):
     user_id = call.from_user.id
-    if user_id not in user_active_task or "secret_key" not in user_active_task[user_id]: return
+    if user_id not in user_active_task or "secret_key" not in user_active_task[user_id]:
+        bot.answer_callback_query(call.id, "❌ এই কাজটি ইতিমধ্যে বাতিল করা হয়েছে!", show_alert=True)
+        try:
+            bot.edit_message_text(
+                "❌ **এই কাজটি বাতিল হয়ে গেছে!**\n\nনতুন কাজের জন্য আবার '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+        return
 
     task_data = user_active_task.pop(user_id)
     conn = get_db()
@@ -415,6 +434,11 @@ def finish_account_submission(call):
                    (user_id, task_data["username"], task_data["password"], task_data["secret_key"], int(time.time())))
     conn.commit()
     conn.close()
+
+    try:
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    except Exception:
+        pass
 
     bot.send_message(user_id, "✅ **কাজ জমা নেওয়া হয়েছে!** ৬ ঘণ্টার মধ্যে চেক করে টাকা যোগ করা হবে।", parse_mode="Markdown")
 
