@@ -361,6 +361,7 @@ def ask_2fa_key(call):
     msg = bot.send_message(user_id, "🔑 **আপনার 2FA Key টি দিন:**", parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_2fa_input)
 
+# ==================== 2FA CODE COPY FIX ====================
 def process_2fa_input(message):
     user_id = message.from_user.id
     if user_id not in user_active_task: return
@@ -375,7 +376,14 @@ def process_2fa_input(message):
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(types.InlineKeyboardButton(f"📋 {totp_code}", callback_data=f"copy_{totp_code}"))
         markup.add(types.InlineKeyboardButton("✅ একাউন্ট খোলা শেষ", callback_data="finish_account"))
-        bot.send_message(user_id, "অ্যাকাউন্ট খোলা শেষ হলে নিচের বাটনে চাপ দিন:", reply_markup=markup)
+        
+        # HTML <code> ট্যাগ ব্যবহার করে সম্পূর্ণ ৬ ডিজিট একসাথে কপি হওয়ার স্থায়ী সমাধান
+        msg_text = (
+            f"🔑 <b>আপনার 2FA OTP কোড:</b>\n\n"
+            f"<code>{totp_code}</code>\n\n"
+            f"<i>(কোডের ওপর একবার টাচ/ক্লিক করলেই সম্পূর্ণ কোড কপি হয়ে যাবে)</i>"
+        )
+        bot.send_message(user_id, msg_text, reply_markup=markup, parse_mode="HTML")
 
     except Exception:
         user_active_task[user_id]["attempts"] += 1
@@ -714,7 +722,7 @@ def send_custom_msg_final(message, target_uid):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ **মেসেজ পাঠানো যায়নি!** ইউজার বট ব্লক করেছে অথবা আইডি ভুল।\nError: {e}")
 
-# ==================== [FIXED] BONUS BALANCE ADD SYSTEM ====================
+# ==================== BONUS BALANCE ADD SYSTEM ====================
 def process_bonus_uid(message):
     try:
         target_uid = int(message.text.strip())
@@ -743,19 +751,15 @@ def process_bonus_amount(message, target_uid):
         conn = get_db()
         cursor = conn.cursor()
         
-        # ১. নিশ্চিতভাবে ইউজার ফেস করে ব্যালেন্স আপডেট করা
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
-        conn.commit() # স্থায়ীভাবে ডেটাবেজে সেভ
+        conn.commit()
 
-        # ২. নতুন ব্যালেন্স কত হলো তা চেক করা
         cursor.execute("SELECT balance FROM users WHERE user_id = ?", (target_uid,))
         new_balance = cursor.fetchone()[0]
         conn.close()
 
-        # ৩. এডমিনকে কনফার্ম করা
         bot.send_message(message.chat.id, f"✅ **User ID `{target_uid}`-এর অ্যাকাউন্টে ৳{amount:.2f} যোগ করা হয়েছে!**\nবর্তমান ব্যালেন্স: ৳{new_balance:.2f}", parse_mode="Markdown")
         
-        # ৪. সফল হওয়ার পর ইউজারকে জানানো
         try:
             bot.send_message(target_uid, f"🎉 **এডমিন প্যানেল থেকে আপনার অ্যাকাউন্টে ৳{amount:.2f} বোনাস যোগ করা হয়েছে!**\n💰 আপনার বর্তমান ব্যালেন্স: **৳{new_balance:.2f}**", parse_mode="Markdown")
         except Exception:
@@ -786,5 +790,5 @@ def process_broadcast(message):
     bot.send_message(message.chat.id, f"✅ **মোট {count} জন ইউজারের কাছে মেসেজ পাঠানো হয়েছে!**")
 
 if __name__ == "__main__":
-    print("🤖 Fully Fixed Bot Active...")
+    print("🤖 Fully Updated Telegram Bot Active...")
     bot.infinity_polling(skip_pending=True)
