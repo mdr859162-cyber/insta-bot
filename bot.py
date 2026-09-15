@@ -47,6 +47,13 @@ def init_db():
         value TEXT
     )''')
     
+    # [POINT 8] WEEKLY RESET STATS TABLE
+    cursor.execute('''CREATE TABLE IF NOT EXISTS weekly_stats (
+        user_id INTEGER PRIMARY KEY,
+        ref_count INTEGER DEFAULT 0,
+        work_count INTEGER DEFAULT 0
+    )''')
+    
     defaults = {
         'video_link': 'NO_LINK',
         'min_withdraw': '100',
@@ -55,7 +62,7 @@ def init_db():
         'bot_status': 'ON',
         'welcome_msg': '✨ **আসসালামু আলাইকুম! INSTAXHUB বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে কাজ করে সহজে ইনকাম করুন।',
         'notice_msg': '📜 **কাজের নিয়মাবলী:**\n১. সঠিক তথ্য দিয়ে অ্যাকাউন্ট খুলুন।\n২. সঠিক 2FA Key প্রদান করুন।',
-        'ref_msg': '🎁 **রেফার করে আনলিমিটেড আয় করুন!**\n\n📌 প্রতি সফল রেফারে পাবেন বোনাস!',
+        'ref_msg': '🎁 **রেফার করে আনলিমিটেড আয় করুন!**',
         'helpline_msg': '🎧 **আমাদের সাপোর্ট টিম আপনার সেবায় নিয়োজিত!**\n\nযেকোনো সমস্যায় এডমিনের সাথে যোগাযোগ করুন।'
     }
     
@@ -120,6 +127,9 @@ def background_task_checker():
                 cursor.execute("UPDATE tasks SET status = 'APPROVED' WHERE id = ?", (t_id,))
                 cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (task_rate, u_id))
                 
+                # [POINT 8] UPDATE WEEKLY WORK STATS
+                cursor.execute("INSERT INTO weekly_stats (user_id, work_count) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET work_count = work_count + 1", (u_id,))
+                
                 cursor.execute("SELECT referred_by FROM users WHERE user_id = ?", (u_id,))
                 u_info = cursor.fetchone()
                 
@@ -130,7 +140,7 @@ def background_task_checker():
                     ref_by = u_info[0]
                     cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (ref_bonus, ref_by))
                     try:
-                        bot.send_message(ref_by, f"🎉 **আপনার রেফারেল কাজ সম্পন্ন করেছে!** আপনি পেয়েছেন **৳{ref_bonus:.2f} বোনাস**!", parse_mode="Markdown")
+                        bot.send_message(ref_by, f"🎉 **আপনার রেফারেল প্রথম কাজ সম্পন্ন করেছে!** আপনি পেয়েছেন **৳{ref_bonus:.2f} বোনাস**!", parse_mode="Markdown")
                     except Exception:
                         pass
                 
@@ -157,8 +167,7 @@ def main_menu():
     )
     return markup
 
-# ==================== SPECIFIC BUTTON HANDLERS ====================
-
+# ==================== START & REFERRAL NOTIFICATION ====================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
@@ -173,6 +182,21 @@ def handle_start(message):
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (user_id, username, referred_by, joined_date) VALUES (?, ?, ?, ?)",
                        (user_id, username, referrer_id, int(time.time())))
+        
+        # [POINT 2] INSTANT REFERRAL NOTIFICATION & [POINT 8] WEEKLY REF TRACK
+        if referrer_id:
+            cursor.execute("INSERT INTO weekly_stats (user_id, ref_count) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET ref_count = ref_count + 1", (referrer_id,))
+            conn.commit()
+            try:
+                ref_bonus_val = get_setting("ref_bonus", "10")
+                bot.send_message(
+                    referrer_id,
+                    f"🎉 **আপনার রেফার লিংকে একজন নতুন ইউজার যুক্ত হয়েছেন!**\n\n📌 ইউজারটি তার প্রথম কাজ সফলভাবে সম্পন্ন করলেই আপনি **৳{ref_bonus_val}** রেফার বোনাস পাবেন!",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+
         conn.commit()
     conn.close()
 
@@ -181,17 +205,65 @@ def handle_start(message):
     markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
+# ==================== [POINT 1 & 7] REFERRAL DASHBOARD & LIVE BONUS SHOW ====================
+@bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
+def handle_ref(message):
+    user_id = message.from_user.id
+    bot_info = bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+    ref_custom_text = get_setting("ref_msg")
+    ref_bonus_rate = float(get_setting("ref_bonus", "10"))
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (user_id,))
+    total_ref = cursor.fetchone()[0]
+    
+    cursor.execute("""
+        SELECT COUNT(DISTINCT u.user_id) 
+        FROM users u 
+        JOIN tasks t ON u.user_id = t.user_id 
+        WHERE u.referred_by = ? AND t.status = 'APPROVED'
+    """, (user_id,))
+    earned_ref_count = cursor.fetchone()[0]
+    total_ref_income = earned_ref_count * ref_bonus_rate
+    conn.close()
+
+    text = f"{ref_custom_text}\n\n📌 **প্রতি সফল রেফারে পাবেন:** ৳{ref_bonus_rate:.2f} বোনাস!\n\n🔗 **আপনার রেফার লিংক:**\n`{ref_link}`\n\n📊 **আপনার রেফারেল সামারি:**\n👥 মোট রেফারেল: **{total_ref}** জন\n💰 রেফার থেকে মোট ইনকাম: **৳{total_ref_income:.2f}**"
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📜 রেফার হিস্টোরি", callback_data="ref_history"))
+    
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "ref_history")
+def show_ref_history(call):
+    user_id = call.from_user.id
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, username, joined_date FROM users WHERE referred_by = ? ORDER BY joined_date DESC LIMIT 20", (user_id,))
+    refs = cursor.fetchall()
+    
+    if not refs:
+        bot.answer_callback_query(call.id, "আপনার মাধ্যমে এখনো কেউ যুক্ত হয়নি!", show_alert=True)
+        conn.close()
+        return
+
+    text = "📜 **আপনার রেফারেল হিস্টোরি (সর্বশেষ ২০ জন):**\n\n"
+    for idx, r in enumerate(refs, 1):
+        u_name = f"@{r[1]}" if r[1] else f"User {r[0]}"
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'APPROVED'", (r[0],))
+        has_done_job = cursor.fetchone()[0] > 0
+        st = "✅ সফল (বোনাস যুক্ত)" if has_done_job else "⏳ কাজ পেন্ডিং"
+        text += f"{idx}. {u_name} - {st}\n"
+        
+    conn.close()
+    bot.send_message(user_id, text, parse_mode="Markdown")
+
+# ==================== OTHER BUTTON HANDLERS ====================
 @bot.message_handler(func=lambda msg: msg.text == "📜 কাজের নিয়ম ⚠️")
 def handle_notice(message):
     bot.send_message(message.from_user.id, get_setting("notice_msg"), parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
-def handle_ref(message):
-    bot_info = bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
-    ref_custom_text = get_setting("ref_msg")
-    text = f"{ref_custom_text}\n\n🔗 **আপনার রেফার লিংক:**\n`{ref_link}`"
-    bot.send_message(message.from_user.id, text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
 def handle_helpline(message):
@@ -220,7 +292,7 @@ def handle_report(message):
     conn.close()
     bot.send_message(message.from_user.id, f"📈 **রিপোর্ট:**\n\n✅ সফল: {app} টি\n⏳ পেন্ডিং: {pen} টি", parse_mode="Markdown")
 
-# ==================== WORK & 3-ATTEMPTS 2FA SYSTEM ====================
+# ==================== [POINT 3 & 6] WORK & CANCEL TASK WITH DYNAMIC RATE ====================
 user_active_task = {}
 
 @bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
@@ -235,14 +307,18 @@ def handle_work(message):
         bot.send_message(user_id, "❌ **কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন!**")
         return
 
+    current_task_rate = get_setting("task_rate", "3")
     ig_user, ig_pass = generate_credentials()
     user_active_task[user_id] = {"username": ig_user, "password": ig_pass, "attempts": 0}
 
-    text = f"🤖 **নতুন কাজের তথ্য:**\n\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nআইডি খুলে 2FA সেটআপ করে নিচের বাটনে ক্লিক করুন।"
+    # [POINT 6] SHOW DYNAMIC TASK RATE
+    text = f"🤖 **নতুন কাজের তথ্য:**\n\n💰 **এই কাজটির জন্য পাবেন:** ৳{current_task_rate}\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nআইডি খুলে 2FA সেটআপ করে নিচের বাটনে ক্লিক করুন।"
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔑 2FA Set", callback_data="get_2fa"))
     markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
-    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+    
+    sent_msg = bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+    user_active_task[user_id]["msg_id"] = sent_msg.message_id
 
 @bot.callback_query_handler(func=lambda call: call.data == "click_start")
 def process_start_click(call):
@@ -264,18 +340,28 @@ def callback_check_join(call):
     else:
         bot.answer_callback_query(call.id, "⚠️ আগে সাপোর্ট গ্রুপে জয়েন হন!", show_alert=True)
 
+# [POINT 3] EDIT & CLEANUP CANCELLED TASK MESSAGE
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_task")
 def cancel_task_action(call):
     user_id = call.from_user.id
     if user_id in user_active_task:
         del user_active_task[user_id]
+        
+    try:
+        bot.edit_message_text(
+            "❌ **আপনার কাজটি বাতিল করা হয়েছে!**\n\nনতুন কাজের জন্য আবার '💼 কাজ শুরু করুন 🚀' বাটনে চাপ দিন।",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown"
+        )
+    except Exception:
         bot.send_message(user_id, "❌ **আপনার কাজ বাতিল করা হয়েছে।**")
 
 @bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
 def ask_2fa_key(call):
     user_id = call.from_user.id
     if user_id not in user_active_task:
-        bot.answer_callback_query(call.id, "সেশন আউট!", show_alert=True)
+        bot.answer_callback_query(call.id, "এই কাজটির সেশন আউট বা বাতিল হয়ে গেছে!", show_alert=True)
         return
     msg = bot.send_message(user_id, "🔑 **আপনার 2FA Key টি দিন:**", parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_2fa_input)
@@ -300,7 +386,11 @@ def process_2fa_input(message):
         user_active_task[user_id]["attempts"] += 1
         att = user_active_task[user_id]["attempts"]
         if att >= 3:
+            msg_id = user_active_task[user_id].get("msg_id")
             del user_active_task[user_id]
+            if msg_id:
+                try: bot.delete_message(message.chat.id, msg_id)
+                except Exception: pass
             bot.send_message(user_id, "❌ **পরপর ৩ বার ভুল 2FA Key দেওয়ায় কাজটি বাতিল করা হয়েছে!**", parse_mode="Markdown")
         else:
             msg = bot.send_message(user_id, f"❌ **ভুল 2FA Key!** আপনার আর মাত্র {3-att} বার সুযোগ আছে। সঠিক Key টি আবার দিন:", parse_mode="Markdown")
@@ -426,7 +516,7 @@ def handle_withdraw_approval(call):
         except Exception: pass
         bot.edit_message_text(call.message.text + "\n\nSTATUS: ❌ **REJECTED**", call.message.chat.id, call.message.message_id)
 
-# ==================== ADVANCED DYNAMIC ADMIN DASHBOARD ====================
+# ==================== [POINT 4, 5, 8] ADVANCED ADMIN DASHBOARD ====================
 @bot.message_handler(commands=['admin'])
 def admin_dashboard(message):
     if not is_admin(message.from_user.id): return
@@ -438,6 +528,12 @@ def admin_dashboard(message):
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
+        types.InlineKeyboardButton("🏆 টপ ৫ রেফারার", callback_data="adm_top_ref"),
+        types.InlineKeyboardButton("🏆 টপ ৫ ওয়ার্কার", callback_data="adm_top_work"),
+        types.InlineKeyboardButton("🔄 রিসেট টপ রেফারার", callback_data="adm_reset_top_ref"),
+        types.InlineKeyboardButton("🔄 রিসেট টপ ওয়ার্কার", callback_data="adm_reset_top_work"),
+        types.InlineKeyboardButton("📩 সেন্ড কাস্টম মেসেজ", callback_data="adm_send_custom_msg"),
+        types.InlineKeyboardButton("💰 এড ব্যালেন্স", callback_data="adm_add_bonus"),
         types.InlineKeyboardButton("📊 স্টক ইনফো", callback_data="adm_stock"),
         types.InlineKeyboardButton("📥 স্টক ডাউনলোড", callback_data="adm_dl_stock"),
         types.InlineKeyboardButton("💰 টাস্ক রেট", callback_data="adm_rate"),
@@ -458,7 +554,68 @@ def admin_callback_router(call):
     if not is_admin(call.from_user.id): return
     action = call.data
 
-    if action == "adm_stock":
+    if action == "adm_top_ref":
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, ref_count FROM weekly_stats WHERE ref_count > 0 ORDER BY ref_count DESC LIMIT 5")
+        top_refs = cursor.fetchall()
+        
+        text = "🏆 **সেরা ৫ জন টপ রেফারার (চলতি সপ্তাহ):**\n\n"
+        if not top_refs:
+            text += "কোনো রেফারেল তথ্য পাওয়া যায়নি।"
+        else:
+            for idx, r in enumerate(top_refs, 1):
+                cursor.execute("SELECT username FROM users WHERE user_id = ?", (r[0],))
+                u = cursor.fetchone()
+                uname = f"@{u[0]}" if u and u[0] else "No Username"
+                text += f"{idx}. ID: `{r[0]}` ({uname})\n   👥 রেফার: {r[1]} জন\n\n"
+        conn.close()
+        bot.send_message(call.from_user.id, text, parse_mode="Markdown")
+
+    elif action == "adm_top_work":
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, work_count FROM weekly_stats WHERE work_count > 0 ORDER BY work_count DESC LIMIT 5")
+        top_works = cursor.fetchall()
+        
+        text = "🏆 **সেরা ৫ জন টপ ওয়ার্কার (চলতি সপ্তাহ):**\n\n"
+        if not top_works:
+            text += "কোনো সম্পন্ন কাজের তথ্য পাওয়া যায়নি।"
+        else:
+            for idx, w in enumerate(top_works, 1):
+                cursor.execute("SELECT username FROM users WHERE user_id = ?", (w[0],))
+                u = cursor.fetchone()
+                uname = f"@{u[0]}" if u and u[0] else "No Username"
+                text += f"{idx}. ID: `{w[0]}` ({uname})\n   ✅ কাজ করেছে: {w[1]} টি\n\n"
+        conn.close()
+        bot.send_message(call.from_user.id, text, parse_mode="Markdown")
+
+    # [POINT 8] WEEKLY RESET HANDLERS
+    elif action == "adm_reset_top_ref":
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE weekly_stats SET ref_count = 0")
+        conn.commit()
+        conn.close()
+        bot.answer_callback_query(call.id, "✅ টপ রেফারার ডাটা রিসেট সম্পন্ন!", show_alert=True)
+
+    elif action == "adm_reset_top_work":
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE weekly_stats SET work_count = 0")
+        conn.commit()
+        conn.close()
+        bot.answer_callback_query(call.id, "✅ টপ ওয়ার্কার ডাটা রিসেট সম্পন্ন!", show_alert=True)
+
+    elif action == "adm_send_custom_msg":
+        msg = bot.send_message(call.from_user.id, "👤 **যে ইউজারকে কাস্টম মেসেজ পাঠাতে চান তার User ID টি লিখুন:**")
+        bot.register_next_step_handler(msg, process_msg_uid)
+
+    elif action == "adm_add_bonus":
+        msg = bot.send_message(call.from_user.id, "👤 **যে ইউজারের ওয়ালেটে টাকা পাঠাতে চান তার User ID টি লিখুন:**")
+        bot.register_next_step_handler(msg, process_bonus_uid)
+
+    elif action == "adm_stock":
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'PENDING'")
@@ -510,9 +667,10 @@ def admin_callback_router(call):
         msg = bot.send_message(call.from_user.id, "💳 **নতুন সর্বনিম্ন উইথড্র পরিমাণ লিখুন:**")
         bot.register_next_step_handler(msg, lambda m: set_and_reply(m, "min_withdraw", "মিনিমাম উইথড্র আপডেট হয়েছে!"))
 
+    # [POINT 7] SHOW UPDATED REFERRAL BONUS CONFIRMATION
     elif action == "adm_ref_bonus":
-        msg = bot.send_message(call.from_user.id, "🎁 **নতুন রেফার বোনাস পরিমাণ লিখুন:**")
-        bot.register_next_step_handler(msg, lambda m: set_and_reply(m, "ref_bonus", "রেফার বোনাস আপডেট হয়েছে!"))
+        msg = bot.send_message(call.from_user.id, "🎁 **নতুন রেফার বোনাস পরিমাণ (টাকায়) লিখুন:**")
+        bot.register_next_step_handler(msg, process_ref_bonus_update)
 
     elif action == "adm_edit_notice":
         msg = bot.send_message(call.from_user.id, "📜 **নতুন কাজের নিয়মাবলী টেক্সটটি লিখুন:**")
@@ -538,6 +696,60 @@ def admin_callback_router(call):
         msg = bot.send_message(call.from_user.id, "📢 **সকল ইউজারকে যে মেসেজ পাঠাতে চান তা লিখুন:**")
         bot.register_next_step_handler(msg, process_broadcast)
 
+# [POINT 7] UPDATE REF BONUS WITH CLEAR CONFIRMATION
+def process_ref_bonus_update(message):
+    val = message.text.strip()
+    try:
+        float(val)
+        set_setting("ref_bonus", val)
+        bot.send_message(message.chat.id, f"✅ **রেফার বোনাস সফলভাবে ৳{val} টাকায় আপডেট করা হয়েছে!**", parse_mode="Markdown")
+    except Exception:
+        bot.send_message(message.chat.id, "❌ **ভুল নম্বর টাইপ করেছেন!**")
+
+# HANDLERS FOR DIRECT CUSTOM MESSAGE
+def process_msg_uid(message):
+    try:
+        target_uid = int(message.text.strip())
+        msg = bot.send_message(message.chat.id, f"📝 **User ID `{target_uid}`-এর জন্য আপনার কাস্টম নোটিফিকেশন/মেসেজটি লিখুন:**", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, lambda m: send_custom_msg_final(m, target_uid))
+    except Exception:
+        bot.send_message(message.chat.id, "❌ **ভুল User ID!**")
+
+def send_custom_msg_final(message, target_uid):
+    custom_text = message.text.strip()
+    try:
+        bot.send_message(target_uid, custom_text, parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"✅ **User ID `{target_uid}`-কে মেসেজটি সফলভাবে পাঠানো হয়েছে!**", parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ **মেসেজ পাঠানো যায়নি!** ইউজার বট ব্লক করেছে অথবা আইডি ভুল।\nError: {e}")
+
+# HANDLERS FOR ADDING BONUS BALANCE
+def process_bonus_uid(message):
+    try:
+        target_uid = int(message.text.strip())
+        msg = bot.send_message(message.chat.id, f"💵 **User ID `{target_uid}`-এর অ্যাকাউন্টে কত টাকা বোনাস যোগ করতে চান লিখুন:**", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, lambda m: process_bonus_amount(m, target_uid))
+    except Exception:
+        bot.send_message(message.chat.id, "❌ **ভুল User ID!**")
+
+def process_bonus_amount(message, target_uid):
+    try:
+        amount = float(message.text.strip())
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
+        conn.commit()
+        conn.close()
+
+        bot.send_message(message.chat.id, f"✅ **User ID `{target_uid}`-এর অ্যাকাউন্টে ৳{amount:.2f} সফলভাবে যোগ হয়েছে!**", parse_mode="Markdown")
+        
+        try:
+            bot.send_message(target_uid, f"🎉 **এডমিন প্যানেল থেকে আপনার অ্যাকাউন্টে ৳{amount:.2f} বোনাস যোগ করা হয়েছে!**", parse_mode="Markdown")
+        except Exception:
+            pass
+    except Exception:
+        bot.send_message(message.chat.id, "❌ **ভুল অ্যামাউন্ট!**")
+
 def set_and_reply(message, key, success_msg):
     set_setting(key, message.text.strip())
     bot.send_message(message.chat.id, f"✅ **{success_msg}**", parse_mode="Markdown")
@@ -560,5 +772,5 @@ def process_broadcast(message):
     bot.send_message(message.chat.id, f"✅ **মোট {count} জন ইউজারের কাছে মেসেজ পাঠানো হয়েছে!**")
 
 if __name__ == "__main__":
-    print("🤖 Bot Active with Fixed Button Handlers...")
+    print("🤖 Fully Updated Telegram Bot Active...")
     bot.infinity_polling(skip_pending=True)
