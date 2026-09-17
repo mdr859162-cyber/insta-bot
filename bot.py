@@ -91,7 +91,7 @@ def get_setting(key, default=""):
 def set_setting(key, value):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k if (k:=key) else key, str(value)))
+    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
     conn.commit()
     conn.close()
 
@@ -224,6 +224,11 @@ def handle_start(message):
     markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
+@bot.callback_query_handler(func=lambda call: call.data == "click_start")
+def click_start_handler(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, "স্বাগতম! নিচে মূল মেনু ব্যবহার করে কাজ শুরু করুন:", reply_markup=main_menu())
+
 user_active_task = {}
 
 @bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
@@ -251,11 +256,24 @@ def handle_work(message):
     markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
     bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
+# --- কাজ বাতিল করার বাটন সমাধান ---
+@bot.callback_query_handler(func=lambda call: call.data == "cancel_task")
+def cancel_task_handler(call):
+    user_id = call.from_user.id
+    bot.answer_callback_query(call.id, "কাজটি বাতিল করা হয়েছে!", show_alert=False)
+    clear_user_session(call.message.chat.id, user_id)
+    try:
+        bot.edit_message_text("❌ **এই কাজটি বাতিল করা হয়েছে।** নতুন কাজ করতে আবার বাটনে চাপ দিন।", 
+                              call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
 @bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
 def ask_2fa_key(call):
     user_id = call.from_user.id
+    bot.answer_callback_query(call.id)
     if user_id not in user_active_task:
-        bot.answer_callback_query(call.id, "এই কাজটি বাতিল হয়ে গেছে!", show_alert=True)
+        bot.send_message(user_id, "❌ এই কাজটি বাতিল হয়ে গেছে! নতুন কাজ শুরু করুন।")
         return
     msg = bot.send_message(user_id, "🔑 **আপনার ইনস্টাগ্রাম অ্যাকাউন্টের সঠিক 2FA Key টি দিন:**", parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_2fa_input)
@@ -298,8 +316,9 @@ def process_2fa_input(message):
 @bot.callback_query_handler(func=lambda call: call.data == "finish_account")
 def finish_account_submission(call):
     user_id = call.from_user.id
+    bot.answer_callback_query(call.id)
     if user_id not in user_active_task or "secret_key" not in user_active_task[user_id]:
-        bot.answer_callback_query(call.id, "❌ এই কাজটি বাতিল হয়েছে!", show_alert=True)
+        bot.send_message(user_id, "❌ এই কাজটি বাতিল হয়েছে! নতুন কাজ শুরু করুন।")
         return
 
     task_data = user_active_task[user_id]
@@ -317,7 +336,6 @@ def finish_account_submission(call):
     except Exception: pass
     bot.send_message(user_id, "✅ **কাজ জমা নেওয়া হয়েছে!** ৬ ঘণ্টার মধ্যে ভেরিফাই হয়ে যাবে।", parse_mode="Markdown")
 
-# --- কাজের ভিডিও ও হেল্পলাইন সরাসরি বাটন ফিক্স ---
 @bot.message_handler(func=lambda msg: msg.text == "🎬 আমি নতুন (কাজের ভিডিও) 🎬")
 def handle_video_guide(message):
     clear_user_session(message.chat.id, message.from_user.id)
@@ -396,7 +414,7 @@ def handle_balance(message):
     markup.add(types.InlineKeyboardButton("বিকাশ", callback_data="wd_bkash"), types.InlineKeyboardButton("নগদ", callback_data="wd_nagad"))
     bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
-# ==================== FULL ADMIN CONTROL DASHBOARD (ALL 16 BUTTONS) ====================
+# ==================== FULL ADMIN CONTROL DASHBOARD ====================
 @bot.message_handler(commands=['admin'])
 def admin_dashboard(message):
     if not is_admin(message.from_user.id): return
@@ -431,6 +449,7 @@ def admin_dashboard(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
 def admin_callback_router(call):
     if not is_admin(call.from_user.id): return
+    bot.answer_callback_query(call.id)
     action = call.data
     uid = call.from_user.id
 
@@ -478,7 +497,7 @@ def admin_callback_router(call):
         cursor.execute("SELECT id, ig_username, ig_password, secret_key FROM tasks WHERE status = 'APPROVED'")
         rows = cursor.fetchall()
         if not rows:
-            bot.answer_callback_query(call.id, "স্টকে কোনো কাজ নেই!", show_alert=True)
+            bot.send_message(uid, "স্টকে কোনো কাজ নেই!")
             conn.close()
             return
         wb = openpyxl.Workbook()
@@ -598,6 +617,7 @@ def process_broadcast(message):
 
 @bot.callback_query_handler(func=lambda call: call.data in ["wd_bkash", "wd_nagad"])
 def process_withdraw_method(call):
+    bot.answer_callback_query(call.id)
     user_id = call.from_user.id
     method = "বিকাশ" if call.data == "wd_bkash" else "নগদ"
     user_withdraw_data = getattr(process_withdraw_method, 'user_withdraw_data', {})
@@ -653,6 +673,7 @@ def process_withdraw_amount(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("wdapp_") or call.data.startswith("wdrej_"))
 def handle_withdraw_approval(call):
     if not is_admin(call.from_user.id): return
+    bot.answer_callback_query(call.id)
     action, u_id, amt = call.data.split("_")
     u_id, amt = int(u_id), float(amt)
     
