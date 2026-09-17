@@ -100,7 +100,7 @@ def generate_credentials():
     password = "Pass#" + "".join(random.choices(string.ascii_letters + string.digits, k=6))
     return username, password
 
-# ==================== GROUP CHECK FIX ====================
+# ==================== GROUP CHECK ====================
 def check_mandatory_join(user_id):
     if is_admin(user_id):
         return True
@@ -136,9 +136,9 @@ def verify_instagram_account_exists(username):
     except Exception:
         return True
 
-# ==================== BACKGROUND AUTO-APPROVER (FULL AUTOMATION) ====================
+# ==================== BACKGROUND AUTO-APPROVER ====================
 def background_auto_approver():
-    """ ৬ ঘণ্টা পর ব্যাকগ্রাউন্ডে অ্যাকাউন্ট অটো-চেক করে ব্যালেন্স যুক্ত করবে """
+    """ ৬ ঘণ্টা পর ব্যাকগ্রাউন্ডে অটো পেমেন্ট প্রদান """
     while True:
         try:
             conn = get_db()
@@ -151,7 +151,6 @@ def background_auto_approver():
             for task in pending_tasks:
                 t_id, u_id, ig_user, secret_key = task
                 
-                # ৬ ঘণ্টা পর ফাইনাল ভ্যালিডেশন
                 if verify_instagram_account_exists(ig_user) and is_valid_2fa_secret(secret_key):
                     task_rate = float(get_setting("task_rate", "3"))
                     ref_bonus = float(get_setting("ref_bonus", "10"))
@@ -160,7 +159,6 @@ def background_auto_approver():
                     cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (task_rate, u_id))
                     cursor.execute("INSERT INTO weekly_stats (user_id, work_count) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET work_count = work_count + 1", (u_id,))
 
-                    # রেফার বোনাস দেওয়া (যদি প্রথম সফল কাজ হয়)
                     cursor.execute("SELECT referred_by FROM users WHERE user_id = ?", (u_id,))
                     u_info = cursor.fetchone()
                     cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'APPROVED'", (u_id,))
@@ -176,13 +174,13 @@ def background_auto_approver():
                     conn.commit()
 
                     try:
-                        bot.send_message(u_id, f"🎉 **আপনার ৬ ঘণ্টা আগের জমা দেওয়া কাজটি অটো-এপ্রুভ হয়েছে!**\n💰 ওয়ালেটে যোগ হয়েছে: **৳{task_rate:.2f}**", parse_mode="Markdown")
+                        bot.send_message(u_id, f"🎉 **আপনার জমা দেওয়া কাজটি অটো-এপ্রুভ হয়েছে!**\n💰 ওয়ালেটে যোগ হয়েছে: **৳{task_rate:.2f}**", parse_mode="Markdown")
                     except Exception: pass
                 else:
                     cursor.execute("UPDATE tasks SET status = 'REJECTED' WHERE id = ?", (t_id,))
                     conn.commit()
                     try:
-                        bot.send_message(u_id, "❌ **আপনার অ্যাকাউন্টটি পরবর্তীতে ইনস্টাগ্রামে খুঁজে না পাওয়ায় কাজটি অটো-রিজেক্ট করা হয়েছে।**\n\nপ্রয়োজনে কাজের ভিডিও টিউটোরিয়াল দেখে আবার সঠিক নিয়মে চেষ্টা করুন।", parse_mode="Markdown")
+                        bot.send_message(u_id, "❌ **আপনার অ্যাকাউন্টটি ইনস্টাগ্রামে খুঁজে না পাওয়ায় কাজটি রিজেক্ট করা হয়েছে।**", parse_mode="Markdown")
                     except Exception: pass
 
             conn.close()
@@ -200,14 +198,21 @@ def main_menu():
         types.KeyboardButton("💼 কাজ শুরু করুন 🚀"), types.KeyboardButton("💰 ব্যালেন্স & উইথড্র 💳"),
         types.KeyboardButton("📊 কাজের রিপোর্ট 📈"), types.KeyboardButton("📜 কাজের নিয়ম ⚠️"),
         types.KeyboardButton("👥 রেফার করুন 🎁"), types.KeyboardButton("🎬 আমি নতুন (কাজের ভিডিও) 🎬"),
-        types.KeyboardButton("🆘 হেল্পলাইন 📞")
+        types.KeyboardButton("🆘 হেল্পлайн 📞")
     )
     return markup
+
+def clear_user_session(chat_id, user_id):
+    """ যেকোনো আটকে থাকা সেশন এবং ইনপুট হ্যান্ডলার ক্লিয়ার করার ফাংশন """
+    bot.clear_step_handler_by_chat_id(chat_id=chat_id)
+    if user_id in user_active_task:
+        del user_active_task[user_id]
 
 # ==================== START & REFERRAL ====================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
+    clear_user_session(message.chat.id, user_id)
     username = message.from_user.username or ""
     
     args = message.text.split()
@@ -224,7 +229,7 @@ def handle_start(message):
             cursor.execute("INSERT INTO weekly_stats (user_id, ref_count) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET ref_count = ref_count + 1", (referrer_id,))
             conn.commit()
             try:
-                bot.send_message(referrer_id, f"🎉 **একজন নতুন ইউজার আপনার রেফার লিংকে যুক্ত হয়েছেন!**", parse_mode="Markdown")
+                bot.send_message(referrer_id, "🎉 **একজন নতুন ইউজার আপনার রেফার লিংকে যুক্ত হয়েছেন!**", parse_mode="Markdown")
             except Exception: pass
 
         conn.commit()
@@ -235,12 +240,13 @@ def handle_start(message):
     markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
-# ==================== WORK FLOW (NO TIMELOCK - INSTANT CHECK) ====================
+# ==================== WORK FLOW (NO TIMELOCK & FIXED SESSION) ====================
 user_active_task = {}
 
 @bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
 def handle_work(message):
     user_id = message.from_user.id
+    clear_user_session(message.chat.id, user_id)
     
     if get_setting("bot_status", "ON") == "OFF" and not is_admin(user_id):
         bot.send_message(user_id, "⚠️ **বট বর্তমানে রক্ষণাবেক্ষণের (Maintenance) জন্য বন্ধ আছে।**", parse_mode="Markdown")
@@ -280,19 +286,25 @@ def ask_2fa_key(call):
 
 def process_2fa_input(message):
     user_id = message.from_user.id
+    
+    # মেনু বাটনে ক্লিক করলে কাজের প্রসেস থেকে বের হয়ে যাওয়া
+    if message.text in ["💼 কাজ শুরু করুন 🚀", "💰 ব্যালেন্স & উইথড্র 💳", "📊 কাজের রিপোর্ট 📈", "📜 কাজের নিয়ম ⚠️", "👥 রেফার করুন 🎁", "🎬 আমি নতুন (কাজের ভিডিও) 🎬", "🆘 হেল্পলাইন 📞"]:
+        clear_user_session(message.chat.id, user_id)
+        return
+
     if user_id not in user_active_task:
         bot.send_message(user_id, "❌ **সেশন আউট!** নতুন করে কাজ শুরু করুন।", parse_mode="Markdown")
         return
 
     secret_key = message.text.strip().replace(" ", "").upper()
     
-    # 2FA Secret Key ব্যাকএন্ড ইনস্ট্যান্ট চেক
+    # ২এফএ ব্যাকএন্ড চেক
     if not is_valid_2fa_secret(secret_key):
         user_active_task[user_id]["attempts"] += 1
         att = user_active_task[user_id]["attempts"]
         if att >= 3:
-            del user_active_task[user_id]
-            bot.send_message(user_id, "⚠️ **পরপর ৩ বার ভুল 2FA Key দেওয়ায় কাজটি বাতিল হয়েছে। ভিডিও টিউটোরিয়াল দেখে সঠিক নিয়ম জেনে আবার চেষ্টা করুন।**", parse_mode="Markdown")
+            clear_user_session(message.chat.id, user_id)
+            bot.send_message(user_id, "⚠️ **পরপর ৩ বার ভুল 2FA Key দেওয়ায় কাজটি বাতিল হয়েছে। সঠিকভাবে আবার চেষ্টা করুন।**", parse_mode="Markdown")
         else:
             msg = bot.send_message(user_id, f"❌ **ভুল/অকার্যকর 2FA Key!** সঠিক সিক্রেট কি প্রদান করুন। (বাকি {3-att} বার)", parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_2fa_input)
@@ -311,6 +323,7 @@ def process_2fa_input(message):
         bot.send_message(user_id, msg_text, reply_markup=markup, parse_mode="HTML")
 
     except Exception:
+        clear_user_session(message.chat.id, user_id)
         bot.send_message(user_id, "❌ **2FA কোড জেনারেট করা সম্ভব হয়নি!**", parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "finish_account")
@@ -325,13 +338,11 @@ def finish_account_submission(call):
 
     bot.answer_callback_query(call.id, "🔍 অ্যাকাউন্ট যাচাই করা হচ্ছে...", show_alert=False)
 
-    # অন-দ্য-স্পট ইনস্টাগ্রাম প্রোফাইল চেক
     if not verify_instagram_account_exists(ig_user):
-        bot.send_message(user_id, f"⚠️ **কাজ রিজেক্ট হয়েছে!**\n\nবটের দেওয়া ইউজারনেম (`{ig_user}`) দিয়ে কোনো ইনস্টাগ্রাম অ্যাকাউন্ট খুঁজে পাওয়া যায়নি। দয়া করে সঠিক নিয়ম জেনে আইডি তৈরি করে আবার জমা দিন।", parse_mode="Markdown")
+        bot.send_message(user_id, f"⚠️ **কাজ রিজেক্ট হয়েছে!**\n\nবটের দেওয়া ইউজারনেম (`{ig_user}`) দিয়ে কোনো ইনস্টাগ্রাম অ্যাকাউন্ট খুঁজে পাওয়া যায়নি। সঠিক তথ্য দিয়ে জমা দিন।", parse_mode="Markdown")
         return
 
-    # কাজ সঠিক থাকলে পজিশন সেভ
-    del user_active_task[user_id]
+    clear_user_session(call.message.chat.id, user_id)
     now = int(time.time())
     auto_approve_time = now + (6 * 3600)
 
@@ -374,22 +385,24 @@ def callback_check_join(call):
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_task")
 def cancel_task_action(call):
     user_id = call.from_user.id
-    if user_id in user_active_task:
-        del user_active_task[user_id]
-        bot.send_message(user_id, "❌ **কাজ বাতিল করা হয়েছে!**", parse_mode="Markdown")
+    clear_user_session(call.message.chat.id, user_id)
+    bot.send_message(user_id, "❌ **কাজ বাতিল করা হয়েছে!**", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "📜 কাজের নিয়ম ⚠️")
 def handle_notice(message):
+    clear_user_session(message.chat.id, message.from_user.id)
     bot.send_message(message.from_user.id, get_setting("notice_msg"), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
 def handle_helpline(message):
+    clear_user_session(message.chat.id, message.from_user.id)
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=f"https://t.me/{ADMIN_USERNAME.replace('@','')}"))
     bot.send_message(message.from_user.id, get_setting("helpline_msg"), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "🎬 আমি নতুন (কাজের ভিডিও) 🎬")
 def handle_video_guide(message):
+    clear_user_session(message.chat.id, message.from_user.id)
     v_link = get_setting("video_link", "NO_LINK")
     markup = types.InlineKeyboardMarkup()
     if v_link != "NO_LINK": markup.add(types.InlineKeyboardButton("🎥 টিউটোরিয়াল ভিডিও", url=v_link))
@@ -397,6 +410,7 @@ def handle_video_guide(message):
 
 @bot.message_handler(func=lambda msg: msg.text == "📊 কাজের রিপোর্ট 📈")
 def handle_report(message):
+    clear_user_session(message.chat.id, message.from_user.id)
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'APPROVED'", (message.from_user.id,))
@@ -410,6 +424,8 @@ def handle_report(message):
 @bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
 def handle_ref(message):
     user_id = message.from_user.id
+    clear_user_session(message.chat.id, user_id)
+    
     bot_info = bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
     ref_custom_text = get_setting("ref_msg")
@@ -439,10 +455,13 @@ user_withdraw_data = {}
 @bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
 def handle_balance(message):
     user_id = message.from_user.id
+    clear_user_session(message.chat.id, user_id)
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    bal = cursor.fetchone()[0]
+    res = cursor.fetchone()
+    bal = res[0] if res else 0.0
     
     cursor.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'PENDING'", (user_id,))
     pending_count = cursor.fetchone()[0]
@@ -630,5 +649,5 @@ def process_broadcast(message):
     bot.send_message(message.chat.id, f"✅ **{count} জন ইউজারের কাছে মেসেজ পাঠানো হয়েছে!**", parse_mode="Markdown")
 
 if __name__ == "__main__":
-    print("🤖 InstaXhub Fully Automated Bot Active...")
+    print("🤖 InstaXhub Bot Active...")
     bot.infinity_polling(skip_pending=True)
