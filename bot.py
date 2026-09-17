@@ -15,7 +15,6 @@ import requests
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
 ADMIN_USERNAME = "@Adiminsaport"
 ADMIN_IDS = [8422485324]
-GROUP_CHAT_ID = "@instaXhubsaport"
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -56,11 +55,12 @@ def init_db():
     
     defaults = {
         'video_link': 'https://youtube.com',
+        'group_chat_id': '@instaXhubsaport',
         'min_withdraw': '100',
         'task_rate': '3',
         'ref_bonus': '10',
         'bot_status': 'ON',
-        'welcome_msg': '✨ **আসসালামু আলাইকুম! INSTAXHUB বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে কাজ করে সহজে ইনকাম করুন।',
+        'welcome_msg': '✨ **আসসালামু আলাইকুম! INSTAXHUB বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে কাজ করতে হলে নিচে দেওয়া আমাদের অফিশিয়াল টেলিগ্রাম চ্যানেলে যুক্ত থাকুন।',
         'notice_msg': '📜 **কাজের নিয়মাবলী:**\n১. সঠিক তথ্য দিয়ে নতুন অ্যাকাউন্ট খুলুন।\n২. বটের দেওয়া ইউজারনেম ও পাসওয়ার্ড ব্যবহার করুন।\n৩. সঠিক 2FA Key প্রদান করুন।',
         'ref_msg': '🎁 **রেফার করে আনলিমিটেড আয় করুন!**',
         'helpline_msg': '🎧 **আমাদের সাপোর্ট টিম আপনার সেবায় নিয়োজিত!**\n\nযেকোনো সমস্যায় এডমিনের সাথে যোগাযোগ করুন।'
@@ -109,8 +109,9 @@ def clear_user_session(chat_id, user_id):
 def check_mandatory_join(user_id):
     if is_admin(user_id):
         return True
+    group_id = get_setting("group_chat_id", "@instaXhubsaport")
     try:
-        member = bot.get_chat_member(GROUP_CHAT_ID, user_id)
+        member = bot.get_chat_member(group_id, user_id)
         return member.status in ['creator', 'administrator', 'member', 'restricted']
     except Exception:
         return True
@@ -220,14 +221,23 @@ def handle_start(message):
     conn.close()
 
     welcome_text = get_setting("welcome_msg")
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
+    group_chat = get_setting("group_chat_id", "@instaXhubsaport").replace("@", "")
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("📢 সাপোর্ট গ্রুপে জয়েন করুন", url=f"https://t.me/{group_chat}"),
+        types.InlineKeyboardButton("✅ জয়েন করেছি / Start 🚀", callback_data="click_start")
+    )
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "click_start")
 def click_start_handler(call):
     bot.answer_callback_query(call.id)
-    bot.send_message(call.from_user.id, "স্বাগতম! নিচে মূল মেনু ব্যবহার করে কাজ শুরু করুন:", reply_markup=main_menu())
+    user_id = call.from_user.id
+    if not check_mandatory_join(user_id):
+        bot.send_message(user_id, "❌ **আপনি এখনও সাপোর্ট গ্রুপে জয়েন করেননি!** আগে জয়েন করুন।", parse_mode="Markdown")
+        return
+    bot.send_message(user_id, "স্বাগতম! নিচে মূল মেনু ব্যবহার করে কাজ শুরু করুন:", reply_markup=main_menu())
 
 user_active_task = {}
 
@@ -241,9 +251,10 @@ def handle_work(message):
         return
 
     if not check_mandatory_join(user_id):
+        group_chat = get_setting("group_chat_id", "@instaXhubsaport").replace("@", "")
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("📢 সাপোর্ট গ্রুপে জয়েন করুন", url=f"https://t.me/{GROUP_CHAT_ID.replace('@','')}"))
-        bot.send_message(user_id, "❌ **কাজ করতে হলে আগে সাপোর্ট গ্রুপে জয়েন করুন!**", reply_markup=markup, parse_mode="Markdown")
+        markup.add(types.InlineKeyboardButton("📢 সাপোর্ট গ্রুপে জয়েন করুন", url=f"https://t.me/{group_chat}"))
+        bot.send_message(user_id, "❌ **কাজ করতে হলে আগে আমাদের গ্রুপে জয়েন করুন!**", reply_markup=markup, parse_mode="Markdown")
         return
 
     current_task_rate = get_setting("task_rate", "3")
@@ -256,7 +267,6 @@ def handle_work(message):
     markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
     bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
-# --- কাজ বাতিল করার বাটন সমাধান ---
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_task")
 def cancel_task_handler(call):
     user_id = call.from_user.id
@@ -437,6 +447,7 @@ def admin_dashboard(message):
         types.InlineKeyboardButton("💳 মিনিমাম উইথড্র", callback_data="adm_min_wd"),
         types.InlineKeyboardButton("🎁 রেফার বোনাস", callback_data="adm_ref_bonus"),
         types.InlineKeyboardButton("🔘 বট OFF করুন" if bot_status=="ON" else "🔘 বট ON করুন", callback_data="adm_toggle_bot"),
+        types.InlineKeyboardButton("📢 জয়েন চ্যানেল এডিট", callback_data="adm_edt_group"),
         types.InlineKeyboardButton("📜 কাজের নিয়ম এডিট", callback_data="adm_edt_notice"),
         types.InlineKeyboardButton("👋 ওয়েলকাম মেসেজ", callback_data="adm_edt_welcome"),
         types.InlineKeyboardButton("🎁 রেফার মেসেজ", callback_data="adm_edt_ref"),
@@ -531,6 +542,10 @@ def admin_callback_router(call):
     elif action == "adm_ref_bonus":
         m = bot.send_message(uid, "🎁 **নতুন রেফার বোনাস লিখুন:**")
         bot.register_next_step_handler(m, lambda msg: set_and_reply(msg, "ref_bonus", "রেফার বোনাস আপডেট হয়েছে!"))
+
+    elif action == "adm_edt_group":
+        m = bot.send_message(uid, "📢 **নতুন টেলিগ্রাম সাপোর্ট চ্যানেলের ইউজারনেম লিখুন (যেমন: @instaXhubsaport):**")
+        bot.register_next_step_handler(m, lambda msg: set_and_reply(msg, "group_chat_id", "চ্যানেল/গ্রুপ আপডেট হয়েছে!"))
 
     elif action == "adm_edt_notice":
         m = bot.send_message(uid, "📜 **নতুন কাজের নিয়মাবলী টেক্সট লিখুন:**")
