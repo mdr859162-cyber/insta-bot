@@ -14,9 +14,14 @@ import io
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
 ADMIN_IDS = [8422485324]
 SUPPORT_GROUP_LINK = "https://t.me/instaXhubsaport"
+SUPPORT_GROUP_USERNAME = "@instaXhubsaport" # সাপোর্ট গ্রুপের ইউজারনেম (Must Join চেকের জন্য)
 ADMIN_USERNAME = "Adiminsaport"
 
 bot = telebot.TeleBot(TOKEN)
+
+# এডমিন ইনপুট সঠিকভাবে ট্র্যাক করার জন্য স্টেট ডিকশনারি
+admin_states = {}
+user_active_task = {}
 
 # ==================== DATABASE SETUP ====================
 def init_db():
@@ -52,7 +57,7 @@ def init_db():
         'task_rate': '3',
         'min_withdraw': '100',
         'ref_bonus': '1',
-        'welcome_msg': '✨ **INSTAXHUB বটে আপনাকে স্বাগতম!**\n\nকাজের সমস্ত আপডেট ও সহায়তার জন্য আমাদের অফিশিয়াল সাপোর্ট গ্রুপে জয়েন থাকা বাধ্যতামূলক।',
+        'welcome_msg': '✨ **INSTAXHUB বটে আপনাকে স্বাগতম!**\n\nকাজ শুরু করার জন্য অবশ্যই নিচে দেওয়া আমাদের অফিশিয়াল সাপোর্ট গ্রুপে জয়েন করতে হবে। জয়েন না করলে আপনি বটের মেনু পাবেন না।',
         'rules_text': '📜 **কাজের নিয়মাবলী:**\n\n১. বটের দেওয়া ইউজারনেম দিয়ে ইনস্টাগ্রাম আইডি খুলুন।\n২. সঠিক ২FA Secret Key দিন।\n৩. বায়ার ফাইল চেক করার পর পেমেন্ট মেইন ব্যালেন্সে যুক্ত হবে।',
         'video_link': 'https://youtube.com',
         'channel_link': SUPPORT_GROUP_LINK,
@@ -98,37 +103,28 @@ def generate_credentials():
     password = "Pass#" + "".join(random.choices(string.ascii_letters + string.digits, k=6))
     return username, password
 
-# ==================== REAL INSTAGRAM CHECK ====================
-def check_instagram_username_exists(username):
-    url = f"https://www.instagram.com/{username}/"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+# ==================== MUST JOIN CHECK ====================
+def check_must_join(user_id):
+    if is_admin(user_id):
+        return True
     try:
-        response = requests.get(url, headers=headers, timeout=6)
-        if response.status_code == 200 and "profilePage_" in response.text:
-            return True, "EXISTS"
-        elif response.status_code == 404 or "Page Not Found" in response.text:
-            return False, "NOT_FOUND"
-        else:
-            return False, "NOT_FOUND"
+        member = bot.get_chat_member(SUPPORT_GROUP_USERNAME, user_id)
+        if member.status in ['creator', 'administrator', 'member']:
+            return True
+        return False
     except Exception:
-        return False, "NOT_FOUND"
+        return False
 
-# ==================== 2FA & OTP CHECK ====================
-def verify_2fa_and_get_otp(secret_key):
-    try:
-        cleaned = secret_key.replace(" ", "").strip().upper()
-        if len(cleaned) < 16 or len(cleaned) > 32:
-            return False, None
-        base64.b32decode(cleaned, casefold=True)
-        totp = pyotp.TOTP(cleaned)
-        code = totp.now()
-        if len(code) == 6 and code.isdigit():
-            return True, code
-        return False, None
-    except Exception:
-        return False, None
+def send_must_join_msg(user_id):
+    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
+    text = "⚠️ **সতর্কবার্তা:**\n\nবট ব্যবহার করার জন্য আপনাকে বাধ্যতামূলক আমাদের সাপোর্ট গ্রুপে জয়েন করতে হবে। জয়েন করে নিচের **'✅ জয়েন করেছি'** বাটনে চাপ দিন।"
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন", url=channel_link),
+        types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_joined")
+    )
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
 # ==================== KEYBOARDS ====================
 def main_menu():
@@ -149,8 +145,6 @@ def full_admin_dashboard():
     markup.add(
         types.InlineKeyboardButton("🏆 টপ ৫ রেফারার", callback_data="adm_top_ref"),
         types.InlineKeyboardButton("🏆 টপ ৫ ওয়ার্কার", callback_data="adm_top_work"),
-        types.InlineKeyboardButton("🔄 রিসেট টপ রেফারার", callback_data="adm_reset_ref"),
-        types.InlineKeyboardButton("🔄 রিসেট টপ ওয়ার্কার", callback_data="adm_reset_work"),
         types.InlineKeyboardButton("✉️ সেন্ড কাস্টম মেসেজ", callback_data="adm_custom_msg"),
         types.InlineKeyboardButton("💰 এড ব্যালেন্স", callback_data="adm_add_bal"),
         types.InlineKeyboardButton("📊 স্টক ইনফো", callback_data="adm_stock_info"),
@@ -171,7 +165,7 @@ def full_admin_dashboard():
     )
     return markup
 
-# ==================== HANDLERS ====================
+# ==================== START & MUST JOIN HANDLERS ====================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
@@ -187,15 +181,28 @@ def handle_start(message):
     conn.commit()
     conn.close()
 
-    text = get_setting("welcome_msg")
-    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন", url=channel_link))
-    
-    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
-    bot.send_message(user_id, "নিচের মেনু থেকে আপনার অপশন সিলেক্ট করুন:", reply_markup=main_menu())
+    if not check_must_join(user_id):
+        send_must_join_msg(user_id)
+        return
 
+    text = get_setting("welcome_msg")
+    bot.send_message(user_id, text, reply_markup=main_menu(), parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "check_joined")
+def check_joined_callback(call):
+    user_id = call.from_user.id
+    if check_must_join(user_id):
+        bot.answer_callback_query(call.id, "✅ জয়েন ভেরিফিকেশন সফল!", show_alert=True)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+        text = get_setting("welcome_msg")
+        bot.send_message(user_id, text, reply_markup=main_menu(), parse_mode="Markdown")
+    else:
+        bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে জয়েন করুন।", show_alert=True)
+
+# ==================== ADMIN DASHBOARD ====================
 @bot.message_handler(commands=['admin'])
 def handle_admin_cmd(message):
     if is_admin(message.from_user.id):
@@ -207,8 +214,61 @@ def handle_admin_cmd(message):
             parse_mode="Markdown"
         )
 
-# --- MAIN MENU BUTTON HANDLERS ---
-@bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
+# --- USER MAIN MENU HANDLERS (CHECK MUST JOIN) ---
+@bot.message_handler(func=lambda msg: True)
+def handle_all_user_messages(message):
+    user_id = message.from_user.id
+    text = message.text
+
+    # ১. এডমিন টেক্সট ইনপুট চেক (স্টেট ফিল্টার)
+    if is_admin(user_id) and user_id in admin_states:
+        state = admin_states.pop(user_id)
+        
+        if state == "adm_add_bal":
+            process_add_bal(message)
+        elif state == "adm_custom_msg":
+            process_custom_msg(message)
+        elif state == "adm_broadcast":
+            process_broadcast(message)
+        elif state.startswith("set_"):
+            setting_key = state.replace("set_", "")
+            set_setting(setting_key, text.strip())
+            bot.send_message(user_id, f"✅ **আপডেট সফল হয়েছে!**\nনতুন মান: `{text.strip()}`", parse_mode="Markdown")
+        return
+
+    # ২. ইউজারদের বাধ্যতামূলক গ্রুপ জয়েন চেক
+    if not check_must_join(user_id):
+        send_must_join_msg(user_id)
+        return
+
+    # ৩. মেনু বাটন হ্যান্ডলারস
+    if text == "💼 কাজ শুরু করুন 🚀":
+        handle_work(message)
+    elif text == "💰 ব্যালেন্স & উইথড্র 💳":
+        handle_balance(message)
+    elif text == "📊 কাজের রিপোর্ট 📈":
+        handle_report(message)
+    elif text == "📜 কাজের নিয়ম ⚠️":
+        rules = get_setting("rules_text", "📜 **কাজের নিয়মাবলী পাওয়া যায়নি!**")
+        bot.send_message(user_id, rules, parse_mode="Markdown")
+    elif text == "🎬 কাজের ভিডিও 🎬":
+        vid_link = get_setting("video_link", "https://youtube.com")
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🎬 কাজের ভিডিও টিউটোরিয়াল দেখুন", url=vid_link))
+        bot.send_message(user_id, f"🎬 **কাজের ভিডিও টিউটোরিয়াল:**\n\nকাজ বুঝতে নিচে দেওয়া বাটনে ক্লিক করে ইউটিউব ভিডিও দেখে নিন:", reply_markup=markup, parse_mode="Markdown")
+    elif text == "👥 রেফার করুন 🎁":
+        handle_referral(message)
+    elif text == "🆘 হেল্পলাইন 📞":
+        help_msg = get_setting("help_msg", "📞 **হেল্পলাইন & সাপোর্ট Centre:**")
+        channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("👨‍💻 Admin Support", url=f"https://t.me/{ADMIN_USERNAME.replace('@', '')}"),
+            types.InlineKeyboardButton("👥 Group Support", url=channel_link)
+        )
+        bot.send_message(user_id, help_msg, reply_markup=markup, parse_mode="Markdown")
+
+# --- MENU FUNCTIONS ---
 def handle_balance(message):
     user_id = message.from_user.id
     username = message.from_user.username or "নাই"
@@ -234,10 +294,8 @@ def handle_balance(message):
            
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("💳 উইথড্র রিকোয়েস্ট দিন", callback_data="req_withdraw"))
-    
     bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "📊 কাজের রিপোর্ট 📈")
 def handle_report(message):
     user_id = message.from_user.id
     conn = get_db()
@@ -257,18 +315,6 @@ def handle_report(message):
            f"📝 **মোট কাজ করা হয়েছে:** {app_cnt + pen_cnt + rej_cnt} টি"
     bot.send_message(user_id, text, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "📜 কাজের নিয়ম ⚠️")
-def handle_rules(message):
-    rules = get_setting("rules_text", "📜 **কাজের নিয়মাবলী পাওয়া যায়নি!**")
-    bot.send_message(message.chat.id, rules, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "🎬 কাজের ভিডিও 🎬")
-def handle_video(message):
-    vid_link = get_setting("video_link", "https://youtube.com")
-    text = f"🎬 **কাজ শেখার টিউটোরিয়াল ভিডিও:**\n\nকাজ কিভাবে করতে হয় তা বিস্তারিত বুঝতে নিচের লিংকে ভিডিওটি দেখুন:\n👉 {vid_link}"
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "👥 রেফার করুন 🎁")
 def handle_referral(message):
     user_id = message.from_user.id
     bot_info = bot.get_me()
@@ -288,40 +334,7 @@ def handle_referral(message):
            f"👥 **আপনার মোট রেফার:** {total_refs} জন"
     bot.send_message(user_id, text, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
-def handle_helpline(message):
-    help_msg = get_setting("help_msg", "📞 **হেল্পলাইন & সাপোর্ট Centre:**")
-    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
-    
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("👨‍💻 Admin Support", url=f"https://t.me/{ADMIN_USERNAME.replace('@', '')}"),
-        types.InlineKeyboardButton("👥 Group Support", url=channel_link)
-    )
-    bot.send_message(message.chat.id, help_msg, reply_markup=markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "req_withdraw")
-def withdraw_callback(call):
-    user_id = call.from_user.id
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
-    
-    curr_bal = res[0] if res else 0.0
-    min_w = float(get_setting("min_withdraw", "100"))
-    
-    if curr_bal < min_w:
-        bot.answer_callback_query(call.id, f"❌ আপনার ব্যালেন্স ৳{min_w} টাকার কম! বর্তমানে উইথড্র করতে পারবেন না।", show_alert=True)
-    else:
-        bot.answer_callback_query(call.id)
-        bot.send_message(user_id, "✅ উইথড্র প্রসেস করার জন্য আপনার বিকাশ/নগদ নম্বর এবং পরিমাণ এডমিনকে জানান।")
-
-# --- WORKFLOW & TASK CANCELLATION FIX ---
-user_active_task = {}
-
-@bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
+# --- WORKFLOW ---
 def handle_work(message):
     bot_status = get_setting("bot_status", "ON")
     if bot_status == "OFF":
@@ -346,89 +359,19 @@ def handle_work(message):
 def cancel_task_callback(call):
     user_id = call.from_user.id
     bot.answer_callback_query(call.id, "কাজ বাতিল করা হয়েছে")
-    
     if user_id in user_active_task:
         del user_active_task[user_id]
-        
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
+    bot.send_message(user_id, "🚫 **আপনার কাজটি বাতিল করা হয়েছে!**\nনতুন কাজ নিতে '💼 কাজ শুরু করুন 🚀' বাটনে ক্লিক করুন।", parse_mode="Markdown")
 
-    bot.send_message(user_id, "🚫 **আপনার কাজটি বাতিল করা হয়েছে!**\nআপনি চাইলে '💼 কাজ শুরু করুন 🚀' বাটনে চেপে যেকোনো সময় নতুন কাজ নিতে পারেন।", parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
-def ask_2fa_key(call):
-    user_id = call.from_user.id
-    bot.answer_callback_query(call.id)
-    
-    if user_id not in user_active_task:
-        bot.send_message(user_id, "❌ এই কাজটি বাতিল হয়ে গেছে! নতুন কাজ শুরু করুন।")
-        return
-
-    ig_username = user_active_task[user_id]["username"]
-    bot.send_message(user_id, "🔍 **ইনস্টাগ্রাম অ্যাকাউন্ট ভেরিফাই করা হচ্ছে...**")
-
-    exists, status = check_instagram_username_exists(ig_username)
-    if not exists:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("❌ কাজ বাতিল করুন", callback_data="cancel_task"))
-        
-        bot.send_message(
-            user_id, 
-            f"❌ **অ্যাকাউন্ট খুঁজে পাওয়া যায়নি!**\n\nদয়া করে আগে বটের দেওয়া ইউজারনেম (`{ig_username}`) দিয়ে ইনস্টাগ্রাম অ্যাকাউন্টটি সঠিক নিয়ম মেনে খুলুন, তারপর '🔑 2FA Set' বাটনে চাপ দিন।",
-            reply_markup=markup,
-            parse_mode="Markdown"
-        )
-        return
-
-    msg = bot.send_message(user_id, "✅ **অ্যাকাউন্ট পাওয়া গেছে!**\n🔑 **আপনার ইনস্টাগ্রামের সঠিক 2FA Key টি দিন:**", parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_2fa_input)
-
-def process_2fa_input(message):
-    user_id = message.from_user.id
-    if user_id not in user_active_task:
-        return
-
-    raw_input = message.text.strip()
-    is_valid, otp_code = verify_2fa_and_get_otp(raw_input)
-
-    if not is_valid:
-        user_active_task[user_id]["attempts"] += 1
-        att = user_active_task[user_id]["attempts"]
-        if att >= 3:
-            del user_active_task[user_id]
-            bot.send_message(user_id, "❌ **পরপর ৩ বার ভুল 2FA Key দেওয়ায় কাজটি বাতিল করা হয়েছে!**")
-        else:
-            msg = bot.send_message(user_id, f"⚠️ **ভুল 2FA Key!** সঠিক ১৬-৩২ অক্ষরের সিক্রেট কি দিন। (বাকি চেষ্টা: {3-att} বার)")
-            bot.register_next_step_handler(msg, process_2fa_input)
-        return
-
-    cleaned_key = raw_input.replace(" ", "").upper()
-    task_data = user_active_task[user_id]
-    task_rate = float(get_setting("task_rate", "3"))
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO tasks (user_id, ig_username, ig_password, secret_key, status, created_at) VALUES (?, ?, ?, ?, 'PENDING', ?)",
-                   (user_id, task_data["username"], task_data["password"], cleaned_key, int(time.time())))
-    
-    cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (task_rate, user_id))
-    conn.commit()
-    conn.close()
-
-    del user_active_task[user_id]
-    
-    bot.send_message(
-        user_id, 
-        f"✅ **2FA ভেরিফিকেশন সফল!**\n\n🔢 **জেনারেট হওয়া OTP:** `{otp_code}`\n📌 **স্ট্যাটাস:** কাজ জমা নেওয়া হয়েছে (পেন্ডিং)। বায়ারের রিপোর্ট আপলোডের পর টাকা মেইন ব্যালেন্সে যুক্ত হবে।", 
-        parse_mode="Markdown"
-    )
-
-# --- ADMIN PANEL CALLBACK HANDLERS ---
+# --- ADMIN PANEL CALLBACKS & STATE MANAGEMENT ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
 def handle_admin_callbacks(call):
-    if not is_admin(call.from_user.id):
+    user_id = call.from_user.id
+    if not is_admin(user_id):
         bot.answer_callback_query(call.id, "❌ অনুমতি নেই!")
         return
 
@@ -475,11 +418,9 @@ def handle_admin_callbacks(call):
         cursor.execute("SELECT ig_username, ig_password, secret_key, status FROM tasks")
         rows = cursor.fetchall()
         conn.close()
-        
         output = "Username | Password | SecretKey | Status\n"
         for r in rows:
             output += f"{r[0]} | {r[1]} | {r[2]} | {r[3]}\n"
-        
         bio = io.BytesIO(output.encode('utf-8'))
         bio.name = "tasks_stock.txt"
         bot.send_document(call.message.chat.id, bio, caption="📲 **স্টক ফাইল ডাউনলোড সম্পন্ন**")
@@ -492,36 +433,31 @@ def handle_admin_callbacks(call):
 
     elif action in ["adm_task_rate", "adm_min_withdraw", "adm_ref_bonus", "adm_edit_channel", "adm_edit_rules", "adm_welcome_msg", "adm_ref_msg", "adm_help_msg", "adm_edit_video"]:
         prompt_map = {
-            "adm_task_rate": ("নতুন টাস্ক রেট (টাকায়) লিখুন:", "task_rate"),
-            "adm_min_withdraw": ("নতুন মিনিমাম উইথড্র টাকা লিখুন:", "min_withdraw"),
-            "adm_ref_bonus": ("নতুন রেফার বোনাস টাকা লিখুন:", "ref_bonus"),
-            "adm_edit_channel": ("নতুন সাপোর্ট গ্রুপ/চ্যানেল লিংক দিন:", "channel_link"),
-            "adm_edit_rules": ("নতুন কাজের নিয়মাবলী লিখুন:", "rules_text"),
-            "adm_welcome_msg": ("নতুন ওয়েলকাম মেসেজ লিখুন:", "welcome_msg"),
-            "adm_ref_msg": ("নতুন রেফার মেসেজ লিখুন:", "ref_msg"),
-            "adm_help_msg": ("নতুন হেল্পলাইন মেসেজ লিখুন:", "help_msg"),
-            "adm_edit_video": ("নতুন ভিডিও টিউটোরিয়াল লিংক দিন:", "video_link")
+            "adm_task_rate": ("নতুন টাস্ক রেট (টাকায়) লিখুন:", "set_task_rate"),
+            "adm_min_withdraw": ("নতুন মিনিমাম উইথড্র টাকা লিখুন:", "set_min_withdraw"),
+            "adm_ref_bonus": ("নতুন রেফার বোনাস টাকা লিখুন:", "set_ref_bonus"),
+            "adm_edit_channel": ("নতুন সাপোর্ট গ্রুপ/চ্যানেল লিংক দিন:", "set_channel_link"),
+            "adm_edit_rules": ("নতুন কাজের নিয়মাবলী লিখুন:", "set_rules_text"),
+            "adm_welcome_msg": ("নতুন ওয়েলকাম মেসেজ লিখুন:", "set_welcome_msg"),
+            "adm_ref_msg": ("নতুন রেফার মেসেজ লিখুন:", "set_ref_msg"),
+            "adm_help_msg": ("নতুন হেল্পলাইন মেসেজ লিখুন:", "set_help_msg"),
+            "adm_edit_video": ("নতুন ভিডিও টিউটোরিয়াল লিংক দিন:", "set_video_link")
         }
-        msg_text, setting_key = prompt_map[action]
-        msg = bot.send_message(call.message.chat.id, f"📝 **{msg_text}**", parse_mode="Markdown")
-        bot.register_next_step_handler(msg, lambda m: update_setting_step(m, setting_key))
+        msg_text, state_name = prompt_map[action]
+        admin_states[user_id] = state_name
+        bot.send_message(call.message.chat.id, f"📝 **{msg_text}**", parse_mode="Markdown")
 
     elif action == "adm_add_bal":
-        msg = bot.send_message(call.message.chat.id, "💰 **ইউজার ID এবং টাকার পরিমাণ পাঠান:**\n(ফরম্যাট: `12345678 50`)", parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_add_bal)
+        admin_states[user_id] = "adm_add_bal"
+        bot.send_message(call.message.chat.id, "💰 **ইউজার ID এবং টাকার পরিমাণ পাঠান:**\n(ফরম্যাট: `12345678 50`)", parse_mode="Markdown")
 
     elif action == "adm_custom_msg":
-        msg = bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\n(ফরম্যাট: `12345678 আপনার মেসেজ`)", parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_custom_msg)
+        admin_states[user_id] = "adm_custom_msg"
+        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\n(ফরম্যাট: `12345678 আপনার মেসেজ`)", parse_mode="Markdown")
 
     elif action == "adm_broadcast":
-        msg = bot.send_message(call.message.chat.id, "📢 **সব ইউজারের কাছে পাঠাতে চাওয়া ব্রডকাস্ট মেসেজটি লিখুন:**", parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_broadcast)
-
-def update_setting_step(message, setting_key):
-    val = message.text.strip()
-    set_setting(setting_key, val)
-    bot.send_message(message.chat.id, f"✅ **আপডেট সফল হয়েছে!**\nনতুন মান: `{val}`", parse_mode="Markdown")
+        admin_states[user_id] = "adm_broadcast"
+        bot.send_message(call.message.chat.id, "📢 **সব ইউজারের কাছে পাঠাতে চাওয়া ব্রডকাস্ট মেসেজটি লিখুন:**", parse_mode="Markdown")
 
 def process_add_bal(message):
     try:
@@ -564,137 +500,5 @@ def process_broadcast(message):
         except Exception:
             pass
     bot.send_message(message.chat.id, f"📢 **ব্রডকাস্ট সম্পন্ন!**\nমোট {success} জন ইউজার মেসেজ পেয়েছেন।")
-
-# ==================== REPORT & EXCEL PROCESSING ====================
-@bot.callback_query_handler(func=lambda call: call.data == "admin_config_filter")
-def admin_config_filter_start(call):
-    bot.answer_callback_query(call.id)
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🎨 কালার বেসড (Color)", callback_data="set_mode_COLOR"),
-        types.InlineKeyboardButton("📝 টেক্সট বেসড (Text)", callback_data="set_mode_TEXT")
-    )
-    bot.send_message(call.message.chat.id, "⚙️ **বায়ারের রিপোর্ট চেকিং মোড বেছে নিন:**", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("set_mode_"))
-def set_mode_handler(call):
-    mode = call.data.split("_")[2]
-    set_setting("report_mode", mode)
-    bot.answer_callback_query(call.id)
-    
-    if mode == "COLOR":
-        msg = bot.send_message(call.message.chat.id, "🎨 **সঠিক (Pass) কাজের সেল কালার লিখে দিন:**\n(যেমন: GREEN, RED, BLUE, WHITE)")
-        bot.register_next_step_handler(msg, save_pass_rule)
-    else:
-        msg = bot.send_message(call.message.chat.id, "📝 **সঠিক (Pass) কাজের টেক্সট লিখে দিন:**\n(যেমন: Pass, Approved, Done)")
-        bot.register_next_step_handler(msg, save_pass_rule)
-
-def save_pass_rule(message):
-    set_setting("pass_match", message.text.strip().upper())
-    mode = get_setting("report_mode")
-    if mode == "COLOR":
-        msg = bot.send_message(message.chat.id, "🎨 **বাতিল (Fail) কাজের সেল কালার লিখে দিন:**\n(যেমন: WHITE, RED, NO COLOR)")
-        bot.register_next_step_handler(msg, save_fail_rule)
-    else:
-        msg = bot.send_message(message.chat.id, "📝 **বাতিল (Fail) কাজের টেক্সট লিখে দিন:**\n(যেমন: Fail, Rejected, Invalid)")
-        bot.register_next_step_handler(msg, save_fail_rule)
-
-def save_fail_rule(message):
-    set_setting("fail_match", message.text.strip().upper())
-    p_val = get_setting("pass_match")
-    f_val = get_setting("fail_match")
-    bot.send_message(message.chat.id, f"✅ **ফিল্টার সেটআপ সফল!**\n\n📌 **Pass:** `{p_val}`\n❌ **Fail:** `{f_val}`", parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "admin_upload_report")
-def ask_report_file(call):
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "📤 **বায়ারের রিপোর্ট ফাইল (.xlsx) সেন্ড করুন:**", parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_excel_report)
-
-def process_excel_report(message):
-    if not message.document or not message.document.file_name.endswith('.xlsx'):
-        bot.send_message(message.chat.id, "❌ **দয়া করে একটি সঠিক .xlsx ফাইল পাঠান!**")
-        return
-
-    file_info = bot.get_file(message.document.file_id)
-    downloaded_file = bot.download_file(file_info.file_path)
-    
-    file_stream = openpyxl.load_workbook(filename=io.BytesIO(downloaded_file), data_only=True)
-    sheet = file_stream.active
-
-    mode = get_setting("report_mode", "COLOR")
-    pass_rule = get_setting("pass_match", "GREEN")
-    fail_rule = get_setting("fail_match", "WHITE")
-    task_rate = float(get_setting("task_rate", "3"))
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    approved_count = 0
-    rejected_count = 0
-
-    for row in sheet.iter_rows(min_row=1):
-        username_cell = row[0]
-        status_cell = row[1] if len(row) > 1 else row[0]
-        
-        ig_username = str(username_cell.value).strip() if username_cell.value else None
-        if not ig_username:
-            continue
-
-        is_approved = False
-        is_rejected = False
-
-        if mode == "COLOR":
-            fill = username_cell.fill
-            color_hex = ""
-            if fill and fill.start_color and fill.start_color.rgb:
-                color_hex = str(fill.start_color.rgb).upper()
-
-            if pass_rule in ["GREEN", "98FB98", "00FF00"] and ("00FF" in color_hex or "98FB" in color_hex or "34A853" in color_hex):
-                is_approved = True
-            elif pass_rule in ["RED", "FF0000"] and "FF00" in color_hex:
-                is_approved = True
-
-            if fail_rule in ["WHITE", "NO COLOR", "00000000"] and (color_hex in ["00000000", "FFFFFFFF", ""] or not fill.fill_type):
-                is_rejected = True
-            elif fail_rule in ["RED", "FF0000"] and "FF00" in color_hex:
-                is_rejected = True
-
-        elif mode == "TEXT":
-            cell_text = str(status_cell.value).strip().upper() if status_cell.value else ""
-            if pass_rule in cell_text:
-                is_approved = True
-            elif fail_rule in cell_text:
-                is_rejected = True
-
-        cursor.execute("SELECT user_id FROM tasks WHERE ig_username = ? AND status = 'PENDING'", (ig_username,))
-        task = cursor.fetchone()
-
-        if task:
-            user_id = task[0]
-            if is_approved:
-                cursor.execute("UPDATE tasks SET status = 'APPROVED' WHERE ig_username = ?", (ig_username,))
-                cursor.execute("UPDATE users SET balance = balance + ?, pending_balance = pending_balance - ?, total_balance = total_balance + ? WHERE user_id = ?", 
-                               (task_rate, task_rate, task_rate, user_id))
-                approved_count += 1
-                try:
-                    bot.send_message(user_id, f"🎉 **অভিনন্দন!** আপনার ইউজারনেম `{ig_username}` কাজটি সফল হয়েছে এবং ৳{task_rate} টাকা মেইন ব্যালেন্সে যুক্ত হয়েছে।", parse_mode="Markdown")
-                except Exception: pass
-            
-            elif is_rejected:
-                cursor.execute("UPDATE tasks SET status = 'REJECTED' WHERE ig_username = ?", (ig_username,))
-                cursor.execute("UPDATE users SET pending_balance = pending_balance - ? WHERE user_id = ?", (task_rate, user_id))
-                rejected_count += 1
-                try:
-                    bot.send_message(user_id, f"❌ **দুঃখিত!** আপনার ইউজারনেম `{ig_username}` কাজটি বাতিল হয়েছে।", parse_mode="Markdown")
-                except Exception: pass
-
-    conn.commit()
-    conn.close()
-
-    bot.send_message(
-        message.chat.id, 
-        f"📊 **রিপোর্ট প্রসেসিং সম্পন্ন!**\n\n✅ এপ্রুভড: {approved_count} টি\n❌ রিজেক্টেড: {rejected_count} টি"
-    )
 
 bot.infinity_polling()
