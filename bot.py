@@ -56,7 +56,7 @@ def init_db():
         'task_rate': '3',
         'min_withdraw': '100',
         'ref_bonus': '1',
-        'welcome_msg': '✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে ইনস্টাগ্রাম অ্যাকাউন্ট দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।\n\n⚠️ **কাজ শুরু করতে অবশ্যই আমাদের সাপোর্ট গ্রুপে জয়েন থাকতে হবে।**',
+        'welcome_msg': '✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে ইনস্টাগ্রাম অ্যাকাউন্ট দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।',
         'ref_msg': '🎁 **আপনার রেফারেল লিংক ব্যবহার করে বন্ধুদের ইনভাইট করুন এবং বোনাস পান!**',
         'helpline_msg': '📞 **হেল্পলাইন প্যানেল:**\n\nযেকোনো সমস্যায় নিচে যোগাযোগ করুন:',
         'rules_text': '📜 **কাজের নিয়মাবলী:**\n\n১. বটের দেওয়া ইউজারনেম দিয়ে ইনস্টাগ্রাম আইডি খুলুন।\n২. সঠিক ২FA Secret Key দিন।',
@@ -117,14 +117,15 @@ def send_must_join_msg(chat_id):
     admin_user = get_setting("admin_username", ADMIN_USERNAME).replace("@", "")
     
     text = (
-        "📢 **আমাদের অফিশিয়াল সাপোর্ট গ্রুপে জয়েন করুন!**\n\n"
-        "⚠️ কাজ শুরু করার আগে অবশ্যই নিচের গ্রুপে যুক্ত হতে হবে।"
+        "✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n"
+        "⚠️ **কাজ শুরু করার আগে অবশ্যই আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হতে হবে।**\n\n"
+        "নিচের বাটনে ক্লিক করে গ্রুপে জয়েন হয়ে '✅ জয়েন সম্পন্ন করেছি' বাটনে চাপ দিন।"
     )
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন 🚀", url=channel_link),
-        types.InlineKeyboardButton("🧑‍💼 সরাসরি এডমিন সাপোর্ট", url=f"https://t.me/{admin_user}"),
+        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন 📢", url=channel_link),
+        types.InlineKeyboardButton("🧑‍💼 এডমিন সাপোর্ট 💬", url=f"https://t.me/{admin_user}"),
         types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_joined")
     )
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
@@ -174,7 +175,7 @@ def handle_start(message):
     user_id = message.from_user.id
     username = message.from_user.username or "নাই"
     
-    # রেফারেল সিস্টেম
+    # রেফারেল রেকর্ড ডাটাবেজে সংরক্ষণ
     args = message.text.split()
     ref_by = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
     
@@ -194,28 +195,13 @@ def handle_start(message):
     conn.commit()
     conn.close()
 
-    text = get_setting("welcome_msg")
-    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
-    admin_user = get_setting("admin_username", ADMIN_USERNAME).replace("@", "")
-
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন 📢", url=channel_link),
-        types.InlineKeyboardButton("🧑‍💼 এডমিন সাপোর্ট 💬", url=f"https://t.me/{admin_user}"),
-        types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start")
-    )
-    
-    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "click_start")
-def click_start_callback(call):
-    user_id = call.from_user.id
-    bot.answer_callback_query(call.id)
-    
+    # স্টার্ট দেওয়ার সাথেই মেম্বারশিপ চেক হবে
     if check_must_join(user_id):
-        success_msg = "🎉 **স্বাগতম! InstaXhub বটে আপনাকে স্বাগতম। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
+        text = get_setting("welcome_msg")
+        success_msg = f"{text}\n\n🎉 **নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
+        # জয়েন না থাকলে কোনো মেনু দেবে না, শুধু জয়েনিং মেসেজ দেবে
         send_must_join_msg(user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_joined")
@@ -223,7 +209,8 @@ def check_joined_callback(call):
     user_id = call.from_user.id
     if check_must_join(user_id):
         bot.answer_callback_query(call.id, "✅ জয়েন ভেরিফিকেশন সফল!", show_alert=True)
-        success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে কাজ শুরু করুন।** 👇"
+        text = get_setting("welcome_msg")
+        success_msg = f"{text}\n\n🎉 **আপনার জয়েনিং সফল হয়েছে! নিচের মেনু থেকে কাজ শুরু করুন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
         bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে ওপরের 'সাপোর্ট গ্রুপে জয়েন করুন' বাটনে চাপ দিয়ে গ্রুপে যোগ দিন।", show_alert=True)
@@ -337,12 +324,12 @@ def handle_all_messages(message):
             bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক সিক্রেট কি দিন।", parse_mode="Markdown")
         return
 
-    # ৩. বাধ্যবাধকতা চেক (গ্রুপে জয়েন না থাকলে বট একসেস দেবে না)
+    # ৩. বাধ্যবাধকতা চেক (গ্রুপে জয়েন না থাকলে কোনো মেসেজের উত্তর বা মেনু দেবে না)
     if not check_must_join(user_id):
         send_must_join_msg(user_id)
         return
 
-    # ৪. ইউজার মেনু বাটন
+    # ৪. ইউজার মেনু বাটন হ্যান্ডলার
     if text == "💼 কাজ শুরু করুন 🚀":
         if get_setting("bot_status", "ON") == "OFF":
             bot.send_message(user_id, "🚫 **বর্তমানে বট সাময়িকভাবে বন্ধ আছে!** পরে চেষ্টা করুন।")
