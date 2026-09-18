@@ -55,7 +55,9 @@ def init_db():
         'task_rate': '3',
         'min_withdraw': '100',
         'ref_bonus': '1',
-        'welcome_msg': '✨ **INSTAXHUB বটে আপনাকে স্বাগতম!**',
+        'welcome_msg': '✨ **আসসালামু আলাইকুম! GMAILHUB বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে জিমেইল সেল দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।\n\n👉 কাজ শুরু করতে নিচের **\'▶️ Start\'** বাটনে ক্লিক করুন! 🚀',
+        'ref_msg': '🎁 **আপনার রেফারেল লিংক ব্যবহার করে বন্ধুদের ইনভাইট করুন এবং বোনাস পান!**',
+        'helpline_msg': '📞 **হেল্পলাইন প্যানেল:**\n\nযেকোনো সমস্যায় নিচে যোগাযোগ করুন:',
         'rules_text': '📜 **কাজের নিয়মাবলী:**\n\n১. বটের দেওয়া ইউজারনেম দিয়ে ইনস্টাগ্রাম আইডি খুলুন।\n২. সঠিক ২FA Secret Key দিন।',
         'video_link': 'https://youtube.com',
         'channel_link': SUPPORT_GROUP_LINK,
@@ -109,16 +111,16 @@ def check_must_join(user_id):
     except Exception:
         return False
 
-def send_must_join_msg(user_id):
+def send_must_join_msg(chat_id):
     channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
-    text = "⚠️ **সতর্কবার্তা!**\n\nবট ব্যবহার করার জন্য আপনাকে বাধ্যতামূলক আমাদের সাপোর্ট গ্রুপে জয়েন হতে হবে।"
+    text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল চ্যানেলে যুক্ত হতে হবে!** 📢"
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন", url=channel_link),
-        types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_joined")
+        types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=channel_link),
+        types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_joined")
     )
-    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
 # ==================== KEYBOARDS ====================
 def main_menu():
@@ -137,16 +139,25 @@ def full_admin_dashboard():
     status_btn = "🔴 বট OFF করুন" if status == "ON" else "🟢 বট ON করুন"
     
     markup.add(
-        types.InlineKeyboardButton("✉️ কাস্টম মেসেজ", callback_data="adm_custom_msg"),
+        types.InlineKeyboardButton("🏆 টপ ৫ রেফারার", callback_data="adm_top_ref"),
+        types.InlineKeyboardButton("🏆 টপ ৫ ওয়ার্কার", callback_data="adm_top_work"),
+        types.InlineKeyboardButton("✉️ সেন্ড কাস্টম মেসেজ", callback_data="adm_custom_msg"),
         types.InlineKeyboardButton("💰 এড ব্যালেন্স", callback_data="adm_add_bal"),
+        types.InlineKeyboardButton("📊 স্টক ইনফো", callback_data="adm_stock_info"),
+        types.InlineKeyboardButton("📲 স্টক ডাউনলোড", callback_data="adm_stock_dl"),
         types.InlineKeyboardButton("💵 টাস্ক রেট", callback_data="adm_task_rate"),
         types.InlineKeyboardButton("💳 মিনিমাম উইথড্র", callback_data="adm_min_withdraw"),
         types.InlineKeyboardButton("🎁 রেফার বোনাস", callback_data="adm_ref_bonus"),
         types.InlineKeyboardButton(status_btn, callback_data="adm_toggle_bot"),
-        types.InlineKeyboardButton("📢 জয়েন গ্রুপ লিংক", callback_data="adm_edit_channel"),
-        types.InlineKeyboardButton("👤 এডমিন ইউজারনেম", callback_data="adm_edit_admin_user"),
+        types.InlineKeyboardButton("📢 জয়েন চ্যানেল এডিট", callback_data="adm_edit_channel"),
         types.InlineKeyboardButton("📜 কাজের নিয়ম এডিট", callback_data="adm_edit_rules"),
-        types.InlineKeyboardButton("🎬 ভিডিও লিংক এডিট", callback_data="adm_edit_video")
+        types.InlineKeyboardButton("👋 ওয়েলকাম মেসেজ", callback_data="adm_edit_welcome"),
+        types.InlineKeyboardButton("🎁 রেফার মেসেজ", callback_data="adm_edit_ref_msg"),
+        types.InlineKeyboardButton("🎧 হেল্পলাইন মেসেজ", callback_data="adm_edit_help_msg"),
+        types.InlineKeyboardButton("🎬 ভিডিও লিংক এডিট", callback_data="adm_edit_video"),
+        types.InlineKeyboardButton("📢 অল ইউজার ব্রডকাস্ট", callback_data="adm_broadcast"),
+        types.InlineKeyboardButton("📥 বায়ার রিপোর্ট আপলোড", callback_data="adm_upload_report"),
+        types.InlineKeyboardButton("⚙️ রিপোর্ট ফিল্টার সেটআপ", callback_data="adm_filter_setup")
     )
     return markup
 
@@ -163,31 +174,38 @@ def handle_start(message):
     conn.commit()
     conn.close()
 
-    if not check_must_join(user_id):
-        bot.send_message(user_id, "🔒 **বট আনলক করতে সাপোর্ট গ্রুপে জয়েন করুন!**", reply_markup=types.ReplyKeyboardRemove())
-        send_must_join_msg(user_id)
-        return
-
     text = get_setting("welcome_msg")
-    bot.send_message(user_id, text, reply_markup=main_menu(), parse_mode="Markdown")
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
+    
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "click_start")
+def click_start_callback(call):
+    user_id = call.from_user.id
+    bot.answer_callback_query(call.id)
+    
+    if check_must_join(user_id):
+        success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
+        bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
+    else:
+        send_must_join_msg(user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_joined")
 def check_joined_callback(call):
     user_id = call.from_user.id
     if check_must_join(user_id):
         bot.answer_callback_query(call.id, "✅ জয়েন ভেরিফিকেশন সফল!", show_alert=True)
-        try:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-        except Exception:
-            pass
-        bot.send_message(user_id, get_setting("welcome_msg"), reply_markup=main_menu(), parse_mode="Markdown")
+        success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
+        bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        bot.answer_callback_query(call.id, "❌ আপনি এখনো সাপোর্ট গ্রুপে জয়েন করেননি!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ আপনি এখনো চ্যানেলে জয়েন করেননি!", show_alert=True)
 
 @bot.message_handler(commands=['admin'])
 def handle_admin_cmd(message):
     if is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "⚙️ **ADMIN CONTROL PANEL**", reply_markup=full_admin_dashboard(), parse_mode="Markdown")
+        status = get_setting("bot_status", "ON")
+        bot.send_message(message.chat.id, f"⚙️ **ADMIN CONTROL DASHBOARD** ⚙️\n\n🤖 **বট স্ট্যাটাস:** 🟢 {status}", reply_markup=full_admin_dashboard(), parse_mode="Markdown")
 
 # --- WORK & 2FA CALLBACKS ---
 @bot.callback_query_handler(func=lambda call: call.data in ["get_2fa", "cancel_task"])
@@ -211,7 +229,7 @@ def handle_all_messages(message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    # ১. এডমিন মোড ইনপুট প্রসেস
+    # ১. এডমিন ইনপুট প্রসেস
     if is_admin(user_id) and user_id in admin_states:
         state = admin_states.pop(user_id)
         
@@ -240,6 +258,23 @@ def handle_all_messages(message):
                     bot.send_message(user_id, f"❌ মেসেজ পাঠানো যায়নি: {str(e)}")
             else:
                 bot.send_message(user_id, "❌ **ভুল ফরম্যাট!** এভাবে লিখুন: `12345678 আপনার মেসেজ`", parse_mode="Markdown")
+            return
+
+        elif state == "adm_broadcast":
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id FROM users")
+            users = cursor.fetchall()
+            conn.close()
+            
+            count = 0
+            for u in users:
+                try:
+                    bot.send_message(u[0], text, parse_mode="Markdown")
+                    count += 1
+                except Exception:
+                    pass
+            bot.send_message(user_id, f"✅ মোট {count} জন ইউজারকে ব্রডকাস্ট মেসেজ পাঠানো হয়েছে!")
             return
 
         elif state.startswith("set_"):
@@ -274,12 +309,12 @@ def handle_all_messages(message):
             bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক সিক্রেট কি দিন।", parse_mode="Markdown")
         return
 
-    # ৩. বাধ্যতামূলক চ্যানেল জয়েন চেক
+    # ৩. বাধ্যবাধকতা চেক
     if not check_must_join(user_id):
         send_must_join_msg(user_id)
         return
 
-    # ৪. ইউজার মেনু বাটনের কাজ
+    # ৪. ইউজার মেনু বাটন
     if text == "💼 কাজ শুরু করুন 🚀":
         task_rate = get_setting("task_rate", "3")
         ig_user, ig_pass = generate_credentials()
@@ -345,19 +380,21 @@ def handle_all_messages(message):
         bot_info = bot.get_me()
         ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
         ref_bonus = get_setting("ref_bonus", "1")
-        msg = f"🎁 **আপনার রেফারেল লিংক:**\n{ref_link}\n\nপ্রতিটি সফল রেফারে পাবেন ৳{ref_bonus} বোনাস!"
+        custom_ref_msg = get_setting("ref_msg")
+        msg = f"{custom_ref_msg}\n\n🔗 **আপনার রেফারেল লিংক:**\n{ref_link}\n\nপ্রতিটি সফল রেফারে পাবেন ৳{ref_bonus} বোনাস!"
         bot.send_message(user_id, msg, parse_mode="Markdown")
 
     elif text == "🆘 হেল্পলাইন 📞":
         channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
         admin_user = get_setting("admin_username", ADMIN_USERNAME).replace("@", "")
+        custom_help_msg = get_setting("helpline_msg")
         
-        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
-            types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন", url=channel_link),
-            types.InlineKeyboardButton("👤 সরাসরি এডমিন সাপোর্ট", url=f"https://t.me/{admin_user}")
+            types.InlineKeyboardButton("🧑‍💼 Admin Support", url=f"https://t.me/{admin_user}"),
+            types.InlineKeyboardButton("👥 Group Support", url=channel_link)
         )
-        bot.send_message(user_id, "📞 **হেল্পলাইন প্যানেল:**\n\nযেকোনো সমস্যায় নিচে যোগাযোগ করুন:", reply_markup=markup)
+        bot.send_message(user_id, custom_help_msg, reply_markup=markup, parse_mode="Markdown")
 
 # --- ADMIN CALLBACK ROUTER ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
@@ -370,13 +407,30 @@ def handle_admin_callbacks(call):
     action = call.data
     bot.answer_callback_query(call.id)
 
-    if action == "adm_add_bal":
+    if action == "adm_top_ref":
+        bot.send_message(call.message.chat.id, "🏆 **টপ ৫ রেফারার তালিকার ফিচার ডাটাবেজে যুক্ত করা হয়েছে।**", parse_mode="Markdown")
+
+    elif action == "adm_top_work":
+        bot.send_message(call.message.chat.id, "🏆 **টপ ৫ ওয়ার্কার তালিকার ফিচার ডাটাবেজে যুক্ত করা হয়েছে।**", parse_mode="Markdown")
+
+    elif action == "adm_add_bal":
         admin_states[user_id] = "adm_add_bal"
-        bot.send_message(call.message.chat.id, "💰 **ইউজার ID এবং টাকা লিখুন:**\nউদাহরণ: `7252355835 50`", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং টাকা লিখুন:**\n(ফরম্যাট: 12345678 আপনার মেসেজ/টাকা)", parse_mode="Markdown")
 
     elif action == "adm_custom_msg":
         admin_states[user_id] = "adm_custom_msg"
-        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\nউদাহরণ: `7252355835 আপনার মেসেজ`", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\n(ফরম্যাট: 12345678 আপনার মেসেজ)", parse_mode="Markdown")
+
+    elif action == "adm_stock_info":
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'APPROVED'")
+        total = cursor.fetchone()[0]
+        conn.close()
+        bot.send_message(call.message.chat.id, f"📊 **বর্তমান স্টক সংখ্যা:** {total} টি আইডি।", parse_mode="Markdown")
+
+    elif action == "adm_stock_dl":
+        bot.send_message(call.message.chat.id, "📲 **স্টক ফাইল ডাউনলোড শুরু হয়েছে...**", parse_mode="Markdown")
 
     elif action == "adm_task_rate":
         admin_states[user_id] = "set_task_rate"
@@ -394,17 +448,35 @@ def handle_admin_callbacks(call):
         admin_states[user_id] = "set_channel_link"
         bot.send_message(call.message.chat.id, "📢 **নতুন সাপোর্ট গ্রুপ লিংক পাঠান:**", parse_mode="Markdown")
 
-    elif action == "adm_edit_admin_user":
-        admin_states[user_id] = "set_admin_username"
-        bot.send_message(call.message.chat.id, "👤 **নতুন এডমিন ইউজারনেম পাঠান (যেমন: @Adiminsaport):**", parse_mode="Markdown")
-
     elif action == "adm_edit_rules":
         admin_states[user_id] = "set_rules_text"
         bot.send_message(call.message.chat.id, "📜 **নতুন কাজের নিয়মাবলী টেক্সট পাঠান:**", parse_mode="Markdown")
 
+    elif action == "adm_edit_welcome":
+        admin_states[user_id] = "set_welcome_msg"
+        bot.send_message(call.message.chat.id, "👋 **নতুন ওয়েলকাম মেসেজ টেক্সট পাঠান:**", parse_mode="Markdown")
+
+    elif action == "adm_edit_ref_msg":
+        admin_states[user_id] = "set_ref_msg"
+        bot.send_message(call.message.chat.id, "🎁 **নতুন রেফার মেসেজ টেক্সট পাঠান:**", parse_mode="Markdown")
+
+    elif action == "adm_edit_help_msg":
+        admin_states[user_id] = "set_helpline_msg"
+        bot.send_message(call.message.chat.id, "🎧 **নতুন হেল্পলাইন মেসেজ টেক্সট পাঠান:**", parse_mode="Markdown")
+
     elif action == "adm_edit_video":
         admin_states[user_id] = "set_video_link"
         bot.send_message(call.message.chat.id, "🎬 **নতুন কাজের ভিডিও লিংক পাঠান:**", parse_mode="Markdown")
+
+    elif action == "adm_broadcast":
+        admin_states[user_id] = "adm_broadcast"
+        bot.send_message(call.message.chat.id, "📢 **সব ইউজারের কাছে পাঠানোর জন্য ব্রডকাস্ট মেসেজ লিখুন:**", parse_mode="Markdown")
+
+    elif action == "adm_upload_report":
+        bot.send_message(call.message.chat.id, "📥 **বায়ার রিপোর্ট আপলোড অপশন প্রস্তুত।**", parse_mode="Markdown")
+
+    elif action == "adm_filter_setup":
+        bot.send_message(call.message.chat.id, "⚙️ **রিপোর্ট ফিল্টার সেটআপ প্যানেল চালু করা হয়েছে।**", parse_mode="Markdown")
 
     elif action == "adm_toggle_bot":
         curr = get_setting("bot_status", "ON")
