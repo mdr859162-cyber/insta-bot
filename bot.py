@@ -10,9 +10,11 @@ import requests
 import openpyxl
 import io
 
-# ==================== CONFIGURATION ====================
-TOKEN = "YOUR_BOT_TOKEN_HERE"  # আপনার বটের টোকেন দিন
-ADMIN_IDS = [8422485324]       # আপনার এডমিন আইডি
+# ==================== CONFIGURATION (আপনার আসল তথ্যগুলো বসানো হয়েছে) ====================
+TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs" # আপনার বটের আসল টোকেন
+ADMIN_IDS = [8422485324]                               # আপনার এডমিন আইডি
+SUPPORT_GROUP_LINK = "https://t.me/instaXhubsaport"    # আপনার টেলিগ্রাম সাপোর্ট গ্রুপ লিংক
+ADMIN_USERNAME = "@Adiminsaport"                        # এডমিনের টেলিগ্রাম ইউজারনেম
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -46,7 +48,7 @@ def init_db():
     
     defaults = {
         'task_rate': '3',
-        'welcome_msg': '✨ **INSTAXHUB বটে আপনাকে স্বাগতম!**',
+        'welcome_msg': '✨ **INSTAXHUB বটে আপনাকে স্বাগতম!**\n\nনিচের বাটন ব্যবহার করে কাজ শুরু করুন।',
         'report_mode': 'COLOR',       # COLOR অথবা TEXT
         'pass_match': 'GREEN',        # পাস ফিল্টার
         'fail_match': 'WHITE'         # রিজেক্ট ফিল্টার
@@ -86,9 +88,8 @@ def generate_credentials():
     password = "Pass#" + "".join(random.choices(string.ascii_letters + string.digits, k=6))
     return username, password
 
-# ==================== POINT 3: INSTAGRAM USERNAME CHECK ====================
+# ==================== INSTAGRAM USERNAME CHECK ====================
 def check_instagram_username_exists(username):
-    """ইনস্টাগ্রামে এই ইউজারনেমে সত্যিই অ্যাকাউন্ট খোলা হয়েছে কি না তা চেক করে"""
     url = f"https://www.instagram.com/{username}/?__a=1&__d=dis"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
@@ -100,13 +101,12 @@ def check_instagram_username_exists(username):
         elif response.status_code == 404:
             return False, "NOT_FOUND"
         else:
-            return True, "UNKNOWN"  # কোনো রেট লিমিট থাকলে বাইপাস
+            return True, "UNKNOWN"
     except Exception:
         return True, "UNKNOWN"
 
-# ==================== POINT 4: 2FA CHECK & OTP GENERATION ====================
+# ==================== 2FA CHECK & OTP GENERATION ====================
 def verify_2fa_and_get_otp(secret_key):
-    """২এফএ কি যাচাই করে ৬ ডিজিটের ওটিপি কোড প্রদান করে"""
     try:
         cleaned = secret_key.replace(" ", "").strip().upper()
         if len(cleaned) < 16 or len(cleaned) > 32:
@@ -142,7 +142,7 @@ def admin_menu():
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
-    username = message.from_user.username or ""
+    username = message.from_user.username or "নাই"
     
     conn = get_db()
     cursor = conn.cursor()
@@ -158,6 +158,43 @@ def handle_admin_cmd(message):
     if is_admin(message.from_user.id):
         bot.send_message(message.chat.id, "🛠 **এডমিন কন্ট্রোল প্যানেল:**", reply_markup=admin_menu(), parse_mode="Markdown")
 
+# --- UID & USER PROFILE BALANCE SECTION ---
+@bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স & উইথড্র 💳")
+def handle_balance(message):
+    user_id = message.from_user.id
+    username = message.from_user.username or "নাই"
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    conn.close()
+    
+    balance = res[0] if res else 0.0
+    
+    text = f"👤 **ইউজার প্রোফাইল:**\n\n" \
+           f"🆔 **আপনার UID:** `{user_id}`\n" \
+           f"👤 **ইউজারনেম:** @{username}\n" \
+           f"💰 **বর্তমান ব্যালেন্স:** ৳{balance:.2f} BDT\n\n" \
+           f"উইথড্র করতে এডমিনের সাথে যোগাযোগ করুন অথবা পেমেন্ট রিকোয়েস্ট দিন।"
+           
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("💬 সাপোর্ট গ্রুপে যুক্ত হন", url=SUPPORT_GROUP_LINK))
+    
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
+
+# --- HELPLINE & SUPPORT GROUP SECTION ---
+@bot.message_handler(func=lambda msg: msg.text == "🆘 হেল্পলাইন 📞")
+def handle_helpline(message):
+    text = f"📞 **হেল্পলাইন & সাপোর্ট:**\n\n" \
+           f"যেকোনো প্রবলেম, পেমেন্ট ইস্যু বা প্রশ্নের জন্য আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হন।\n\n" \
+           f"📢 **গ্রুপ লিংক:** {SUPPORT_GROUP_LINK}\n" \
+           f"👤 **এডমিন:** {ADMIN_USERNAME}"
+           
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("👥 Telegram Support Group", url=SUPPORT_GROUP_LINK))
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown", disable_web_page_preview=True)
+
 user_active_task = {}
 
 @bot.message_handler(func=lambda msg: msg.text == "💼 কাজ শুরু করুন 🚀")
@@ -172,7 +209,7 @@ def handle_work(message):
     markup.add(types.InlineKeyboardButton("🔑 2FA Set", callback_data="get_2fa"))
     bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
-# --- POINT 3 IN ACTION: CHECK USERNAME BEFORE ASKING 2FA ---
+# --- CHECK USERNAME BEFORE ASKING 2FA ---
 @bot.callback_query_handler(func=lambda call: call.data == "get_2fa")
 def ask_2fa_key(call):
     user_id = call.from_user.id
@@ -185,7 +222,6 @@ def ask_2fa_key(call):
     ig_username = user_active_task[user_id]["username"]
     bot.send_message(user_id, "🔍 **ইনস্টাগ্রাম অ্যাকাউন্ট ভেরিফাই করা হচ্ছে...**")
 
-    # ইউজারনেম চেক
     exists, status = check_instagram_username_exists(ig_username)
     if not exists and status == "NOT_FOUND":
         bot.send_message(
@@ -198,7 +234,7 @@ def ask_2fa_key(call):
     msg = bot.send_message(user_id, "✅ **অ্যাকাউন্ট পাওয়া গেছে!**\n🔑 **আপনার ইনস্টাগ্রামের সঠিক 2FA Key টি দিন:**", parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_2fa_input)
 
-# --- POINT 4 IN ACTION: 2FA CHECK & GENERATE OTP ---
+# --- 2FA CHECK & GENERATE OTP ---
 def process_2fa_input(message):
     user_id = message.from_user.id
     if user_id not in user_active_task:
@@ -230,7 +266,6 @@ def process_2fa_input(message):
 
     del user_active_task[user_id]
     
-    # ২এফএ সফল হলে ওটিপি কোড প্রিন্ট করে ইউজারকে কনফার্মেশন দেওয়া
     bot.send_message(
         user_id, 
         f"✅ **2FA ভেরিফিকেশন সফল!**\n\n🔢 **জেনারেট হওয়া OTP:** `{otp_code}`\n📌 **স্ট্যাটাস:** কাজ জমা নেওয়া হয়েছে। বায়ারের রিপোর্ট আপলোডের পর অ্যাকাউন্টে টাকা যুক্ত হবে।", 
@@ -239,7 +274,6 @@ def process_2fa_input(message):
 
 # ==================== ADMIN FILTER SETUP & REPORT PROCESSING ====================
 
-# --- POINT 1 IN ACTION: COLOR & TEXT FILTER SETUP ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_config_filter")
 def admin_config_filter_start(call):
     bot.answer_callback_query(call.id)
@@ -281,7 +315,6 @@ def save_fail_rule(message):
     
     bot.send_message(message.chat.id, f"✅ **ফিল্টার সেটআপ সফল!**\n\n📌 **মোড:** {mode}\n✅ **Pass কন্ডিশন:** `{p_val}`\n❌ **Fail কন্ডিশন:** `{f_val}`", parse_mode="Markdown")
 
-# --- POINT 2 IN ACTION: AUTO PAYOUT & NOTIFICATIONS ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_upload_report")
 def ask_report_file(call):
     bot.answer_callback_query(call.id)
@@ -319,8 +352,8 @@ def process_excel_report(message):
     rejected_count = 0
 
     for row in sheet.iter_rows(min_row=1):
-        username_cell = row[0] # কলাম A তে ইউজারনেম
-        status_cell = row[1] if len(row) > 1 else row[0] # কলাম B তে টেক্সট স্ট্যাটাস
+        username_cell = row[0]
+        status_cell = row[1] if len(row) > 1 else row[0]
         
         ig_username = str(username_cell.value).strip() if username_cell.value else None
         if not ig_username:
