@@ -56,7 +56,7 @@ def init_db():
         'task_rate': '3',
         'min_withdraw': '100',
         'ref_bonus': '1',
-        'welcome_msg': '✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে ইনস্টাগ্রাম অ্যাকাউন্ট দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।\n\n👉 কাজ শুরু করতে নিচের **\'▶️ Start\'** বাটনে ক্লিক করুন! 🚀',
+        'welcome_msg': '✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে ইনস্টাগ্রাম অ্যাকাউন্ট দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।\n\n⚠️ **কাজ শুরু করতে অবশ্যই আমাদের সাপোর্ট গ্রুপে জয়েন থাকতে হবে।**',
         'ref_msg': '🎁 **আপনার রেফারেল লিংক ব্যবহার করে বন্ধুদের ইনভাইট করুন এবং বোনাস পান!**',
         'helpline_msg': '📞 **হেল্পলাইন প্যানেল:**\n\nযেকোনো সমস্যায় নিচে যোগাযোগ করুন:',
         'rules_text': '📜 **কাজের নিয়মাবলী:**\n\n১. বটের দেওয়া ইউজারনেম দিয়ে ইনস্টাগ্রাম আইডি খুলুন।\n২. সঠিক ২FA Secret Key দিন।',
@@ -114,11 +114,17 @@ def check_must_join(user_id):
 
 def send_must_join_msg(chat_id):
     channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
-    text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল চ্যানেলে যুক্ত হতে হবে!** 📢\n\nনিচের লিংকে জয়েন করে '✅ জয়েন সম্পন্ন করেছি' বাটনে চাপ দিন।"
+    admin_user = get_setting("admin_username", ADMIN_USERNAME).replace("@", "")
+    
+    text = (
+        "📢 **আমাদের অফিশিয়াল সাপোর্ট গ্রুপে জয়েন করুন!**\n\n"
+        "⚠️ কাজ শুরু করার আগে অবশ্যই নিচের গ্রুপে যুক্ত হতে হবে।"
+    )
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📢 আমাদের অফিশিয়াল গ্রুপে জয়েন হন 🚀", url=channel_link),
+        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন 🚀", url=channel_link),
+        types.InlineKeyboardButton("🧑‍💼 সরাসরি এডমিন সাপোর্ট", url=f"https://t.me/{admin_user}"),
         types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_joined")
     )
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
@@ -168,7 +174,7 @@ def handle_start(message):
     user_id = message.from_user.id
     username = message.from_user.username or "নাই"
     
-    # রেফারেল হ্যান্ডলিং
+    # রেফারেল সিস্টেম
     args = message.text.split()
     ref_by = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
     
@@ -189,8 +195,15 @@ def handle_start(message):
     conn.close()
 
     text = get_setting("welcome_msg")
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start"))
+    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
+    admin_user = get_setting("admin_username", ADMIN_USERNAME).replace("@", "")
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপে জয়েন করুন 📢", url=channel_link),
+        types.InlineKeyboardButton("🧑‍💼 এডমিন সাপোর্ট 💬", url=f"https://t.me/{admin_user}"),
+        types.InlineKeyboardButton("▶️ Start 🚀", callback_data="click_start")
+    )
     
     bot.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
@@ -213,7 +226,7 @@ def check_joined_callback(call):
         success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে কাজ শুরু করুন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে লিঙ্ক থেকে জয়েন করুন।", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে ওপরের 'সাপোর্ট গ্রুপে জয়েন করুন' বাটনে চাপ দিয়ে গ্রুপে যোগ দিন।", show_alert=True)
 
 @bot.message_handler(commands=['admin'])
 def handle_admin_cmd(message):
@@ -321,15 +334,15 @@ def handle_all_messages(message):
             except Exception:
                 bot.send_message(user_id, "❌ **ভুল 2FA Key!** সঠিক ইনস্টাগ্রাম Secret Key দিন।", parse_mode="Markdown")
         else:
-            bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক ১৭ বা ১৬ ডিজিটের সিক্রেট কি দিন।", parse_mode="Markdown")
+            bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক সিক্রেট কি দিন।", parse_mode="Markdown")
         return
 
-    # ৩. বাধ্যবাধকতা চেক (জয়েন না করলে বট চলবে না)
+    # ৩. বাধ্যবাধকতা চেক (গ্রুপে জয়েন না থাকলে বট একসেস দেবে না)
     if not check_must_join(user_id):
         send_must_join_msg(user_id)
         return
 
-    # ৪. ইউজার মেনু বাটন প্রসেস
+    # ৪. ইউজার মেনু বাটন
     if text == "💼 কাজ শুরু করুন 🚀":
         if get_setting("bot_status", "ON") == "OFF":
             bot.send_message(user_id, "🚫 **বর্তমানে বট সাময়িকভাবে বন্ধ আছে!** পরে চেষ্টা করুন।")
