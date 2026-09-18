@@ -17,7 +17,7 @@ ADMIN_USERNAME = "Adiminsaport"
 
 bot = telebot.TeleBot(TOKEN)
 
-# ট্র্যাকিং স্টেট
+# Tracking states
 admin_states = {}
 user_active_task = {}
 user_waiting_input = {}
@@ -118,8 +118,8 @@ def send_must_join_msg(chat_id):
     
     text = (
         "✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n"
-        "⚠️ **কাজ শুরু করার আগে অবশ্যই আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হতে হবে।**\n\n"
-        "নিচের বাটনে ক্লিক করে গ্রুপে জয়েন হয়ে '✅ জয়েন সম্পন্ন করেছি' বাটনে চাপ দিন।"
+        "⚠️ **কাজ শুরু করার আগে অবশ্যই আমাদের সাপোর্ট গ্রুপে জয়েন থাকতে হবে।**\n\n"
+        "নিচের বাটন থেকে জয়েন করে '✅ জয়েন সম্পন্ন করেছি' ক্লিক করুন।"
     )
     
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -128,7 +128,10 @@ def send_must_join_msg(chat_id):
         types.InlineKeyboardButton("🧑‍💼 এডমিন সাপোর্ট 💬", url=f"https://t.me/{admin_user}"),
         types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_joined")
     )
-    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+    # Removing keyboard buttons completely when not joined
+    remove_keyboard = types.ReplyKeyboardRemove()
+    bot.send_message(chat_id, text, reply_markup=remove_keyboard, parse_mode="Markdown")
+    bot.send_message(chat_id, "👉 জয়েন করতে নিচের অপশন ব্যবহার করুন:", reply_markup=markup, parse_mode="Markdown")
 
 # ==================== KEYBOARDS ====================
 def main_menu():
@@ -175,7 +178,6 @@ def handle_start(message):
     user_id = message.from_user.id
     username = message.from_user.username or "নাই"
     
-    # রেফারেল রেকর্ড ডাটাবেজে সংরক্ষণ
     args = message.text.split()
     ref_by = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
     
@@ -195,13 +197,12 @@ def handle_start(message):
     conn.commit()
     conn.close()
 
-    # স্টার্ট দেওয়ার সাথেই মেম্বারশিপ চেক হবে
+    # CHECK JOIN STATUS FIRST
     if check_must_join(user_id):
         text = get_setting("welcome_msg")
         success_msg = f"{text}\n\n🎉 **নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        # জয়েন না থাকলে কোনো মেনু দেবে না, শুধু জয়েনিং মেসেজ দেবে
         send_must_join_msg(user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_joined")
@@ -213,7 +214,7 @@ def check_joined_callback(call):
         success_msg = f"{text}\n\n🎉 **আপনার জয়েনিং সফল হয়েছে! নিচের মেনু থেকে কাজ শুরু করুন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে ওপরের 'সাপোর্ট গ্রুপে জয়েন করুন' বাটনে চাপ দিয়ে গ্রুপে যোগ দিন।", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে সাপোর্ট গ্রুপে জয়েন করুন।", show_alert=True)
 
 @bot.message_handler(commands=['admin'])
 def handle_admin_cmd(message):
@@ -243,93 +244,12 @@ def handle_all_messages(message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    # ১. এডমিন ইনপুট প্রসেস
-    if is_admin(user_id) and user_id in admin_states:
-        state = admin_states.pop(user_id)
-        
-        if state == "adm_add_bal":
-            match = re.match(r"^(\d+)\s+([\d\.]+)$", text)
-            if match:
-                target_uid, amount = int(match.group(1)), float(match.group(2))
-                conn = get_db()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE users SET balance = balance + ?, total_balance = total_balance + ? WHERE user_id = ?", (amount, amount, target_uid))
-                conn.commit()
-                conn.close()
-                bot.send_message(user_id, f"✅ UID `{target_uid}` এ ৳{amount} এড করা হয়েছে।", parse_mode="Markdown")
-            else:
-                bot.send_message(user_id, "❌ **ভুল ফরম্যাট!** এভাবে লিখুন: `12345678 50`", parse_mode="Markdown")
-            return
-
-        elif state == "adm_custom_msg":
-            match = re.match(r"^(\d+)\s+(.+)$", text, re.DOTALL)
-            if match:
-                target_uid, msg_content = int(match.group(1)), match.group(2)
-                try:
-                    bot.send_message(target_uid, f"📩 **এডমিন থেকে মেসেজ:**\n\n{msg_content}", parse_mode="Markdown")
-                    bot.send_message(user_id, "✅ ইউজারের কাছে মেসেজ চলে গেছে!")
-                except Exception as e:
-                    bot.send_message(user_id, f"❌ মেসেজ পাঠানো যায়নি: {str(e)}")
-            else:
-                bot.send_message(user_id, "❌ **ভুল ফরম্যাট!** এভাবে লিখুন: `12345678 আপনার মেসেজ`", parse_mode="Markdown")
-            return
-
-        elif state == "adm_broadcast":
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute("SELECT user_id FROM users")
-            users = cursor.fetchall()
-            conn.close()
-            
-            count = 0
-            for u in users:
-                try:
-                    bot.send_message(u[0], text, parse_mode="Markdown")
-                    count += 1
-                except Exception:
-                    pass
-            bot.send_message(user_id, f"✅ মোট {count} জন ইউজারকে ব্রডকাস্ট মেসেজ পাঠানো হয়েছে!")
-            return
-
-        elif state.startswith("set_"):
-            setting_key = state.replace("set_", "")
-            set_setting(setting_key, text)
-            bot.send_message(user_id, "✅ **সেটিং সফলভাবে আপডেট হয়েছে!**", parse_mode="Markdown")
-            return
-
-    # ২. ইউজার ২FA ইনপুট প্রসেস
-    if user_id in user_waiting_input and user_waiting_input[user_id] == "WAITING_2FA":
-        clean_key = text.replace(" ", "")
-        if len(clean_key) >= 16:
-            try:
-                totp = pyotp.TOTP(clean_key)
-                current_code = totp.now()
-                del user_waiting_input[user_id]
-                
-                if user_id in user_active_task:
-                    task_info = user_active_task.pop(user_id)
-                    conn = get_db()
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO tasks (user_id, ig_username, ig_password, secret_key, created_at) VALUES (?, ?, ?, ?, ?)",
-                                   (user_id, task_info['username'], task_info['password'], clean_key, int(time.time())))
-                    cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", 
-                                   (float(get_setting("task_rate", "3")), user_id))
-                    conn.commit()
-                    conn.close()
-
-                bot.send_message(user_id, f"✅ **2FA ভেরিফিকেশন সফল!**\n🔑 বর্তমান OTP কোড: `{current_code}`\n\nকাজটি সফলভাবে সাবমিট হয়েছে এবং চেকিংয়ে আছে।", parse_mode="Markdown")
-            except Exception:
-                bot.send_message(user_id, "❌ **ভুল 2FA Key!** সঠিক ইনস্টাগ্রাম Secret Key দিন।", parse_mode="Markdown")
-        else:
-            bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক সিক্রেট কি দিন।", parse_mode="Markdown")
-        return
-
-    # ৩. বাধ্যবাধকতা চেক (গ্রুপে জয়েন না থাকলে কোনো মেসেজের উত্তর বা মেনু দেবে না)
+    # Must Join Enforcement for any message
     if not check_must_join(user_id):
         send_must_join_msg(user_id)
         return
 
-    # ৪. ইউজার মেনু বাটন হ্যান্ডলার
+    # User menu handling only when joined
     if text == "💼 কাজ শুরু করুন 🚀":
         if get_setting("bot_status", "ON") == "OFF":
             bot.send_message(user_id, "🚫 **বর্তমানে বট সাময়িকভাবে বন্ধ আছে!** পরে চেষ্টা করুন।")
@@ -415,123 +335,5 @@ def handle_all_messages(message):
             types.InlineKeyboardButton("👥 Support Group", url=channel_link)
         )
         bot.send_message(user_id, custom_help_msg, reply_markup=markup, parse_mode="Markdown")
-
-# --- ADMIN CALLBACK ROUTER ---
-@bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
-def handle_admin_callbacks(call):
-    user_id = call.from_user.id
-    if not is_admin(user_id):
-        bot.answer_callback_query(call.id, "❌ আপনার এডমিন অনুমতি নেই!")
-        return
-
-    action = call.data
-    bot.answer_callback_query(call.id)
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    if action == "adm_top_ref":
-        cursor.execute("SELECT username, user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
-        top_refs = cursor.fetchall()
-        msg = "🏆 **টপ ৫ রেফারার তালিকা:**\n\n"
-        for i, u in enumerate(top_refs, 1):
-            uname = f"@{u[0]}" if u[0] != "নাই" else f"ID: {u[1]}"
-            msg += f"{i}. {uname} - ৳{u[2]:.2f}\n"
-        bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
-
-    elif action == "adm_top_work":
-        cursor.execute("SELECT user_id, COUNT(*) as cnt FROM tasks WHERE status = 'APPROVED' GROUP BY user_id ORDER BY cnt DESC LIMIT 5")
-        top_workers = cursor.fetchall()
-        msg = "🏆 **টপ ৫ ওয়ার্কার তালিকা:**\n\n"
-        for i, w in enumerate(top_workers, 1):
-            msg += f"{i}. UID: `{w[0]}` - মোট কাজ: {w[1]} টি\n"
-        if not top_workers:
-            msg += "এখনো কোনো কাজ অনুমোদিত হয়নি।"
-        bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
-
-    elif action == "adm_add_bal":
-        admin_states[user_id] = "adm_add_bal"
-        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং পরিমাণ লিখুন:**\n(ফরম্যাট: `12345678 50`)", parse_mode="Markdown")
-
-    elif action == "adm_custom_msg":
-        admin_states[user_id] = "adm_custom_msg"
-        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\n(ফরম্যাট: `12345678 আপনার মেসেজ`)", parse_mode="Markdown")
-
-    elif action == "adm_stock_info":
-        cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'PENDING'")
-        pending = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'APPROVED'")
-        approved = cursor.fetchone()[0]
-        msg = f"📊 **বর্তমান ইনস্টাগ্রাম স্টক তথ্য:**\n\n⏳ পেন্ডিং স্টক: {pending} টি\n✅ অনুমোদিত/রেডি স্টক: {approved} টি"
-        bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
-
-    elif action == "adm_stock_dl":
-        cursor.execute("SELECT ig_username, ig_password, secret_key FROM tasks")
-        rows = cursor.fetchall()
-        if rows:
-            data = "Username | Password | 2FA Key\n" + "-"*40 + "\n"
-            for r in rows:
-                data += f"{r[0]} | {r[1]} | {r[2]}\n"
-            bio = io.BytesIO(data.encode('utf-8'))
-            bio.name = "instagram_stock.txt"
-            bot.send_document(call.message.chat.id, bio, caption="📲 **সকল ইনস্টাগ্রাম স্টকের ডাউনলোড ফাইল**")
-        else:
-            bot.send_message(call.message.chat.id, "❌ ডাটাবেজে কোনো স্টক ফাইল নেই!")
-
-    elif action == "adm_task_rate":
-        admin_states[user_id] = "set_task_rate"
-        bot.send_message(call.message.chat.id, "💵 **নতুন টাস্ক রেট (টাকায়) লিখুন:**", parse_mode="Markdown")
-
-    elif action == "adm_min_withdraw":
-        admin_states[user_id] = "set_min_withdraw"
-        bot.send_message(call.message.chat.id, "💳 **নতুন মিনিমাম উইথড্র অ্যামাউন্ট লিখুন:**", parse_mode="Markdown")
-
-    elif action == "adm_ref_bonus":
-        admin_states[user_id] = "set_ref_bonus"
-        bot.send_message(call.message.chat.id, "🎁 **নতুন রেফার বোনাস অ্যামাউন্ট লিখুন:**", parse_mode="Markdown")
-
-    elif action == "adm_edit_channel":
-        admin_states[user_id] = "set_channel_link"
-        bot.send_message(call.message.chat.id, "📢 **নতুন সাপোর্ট গ্রুপ/চ্যানেল লিংক পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_edit_rules":
-        admin_states[user_id] = "set_rules_text"
-        bot.send_message(call.message.chat.id, "📜 **নতুন কাজের নিয়মাবলী টেক্সট পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_edit_welcome":
-        admin_states[user_id] = "set_welcome_msg"
-        bot.send_message(call.message.chat.id, "👋 **নতুন ওয়েলকাম মেসেজ টেক্সট পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_edit_ref_msg":
-        admin_states[user_id] = "set_ref_msg"
-        bot.send_message(call.message.chat.id, "🎁 **নতুন রেফার মেসেজ টেক্সট পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_edit_help_msg":
-        admin_states[user_id] = "set_helpline_msg"
-        bot.send_message(call.message.chat.id, "🎧 **নতুন হেল্পলাইন মেসেজ টেক্সট পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_edit_video":
-        admin_states[user_id] = "set_video_link"
-        bot.send_message(call.message.chat.id, "🎬 **নতুন কাজের ভিডিও লিংক পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_broadcast":
-        admin_states[user_id] = "adm_broadcast"
-        bot.send_message(call.message.chat.id, "📢 **সব ইউজারের কাছে পাঠানোর জন্য ব্রডকাস্ট মেসেজ লিখুন:**", parse_mode="Markdown")
-
-    elif action == "adm_upload_report":
-        admin_states[user_id] = "set_upload_report"
-        bot.send_message(call.message.chat.id, "📥 **বায়ার রিপোর্ট দেওয়ার অপশন তৈরি করা আছে। নতুন কাজের আপডেট মেসেজ বা তথ্য এখানে পাঠান:**", parse_mode="Markdown")
-
-    elif action == "adm_filter_setup":
-        bot.send_message(call.message.chat.id, "⚙️ **ফিল্টার সেটআপ করা আছে। স্ট্যাটাস অনুযায়ী ভ্যালিডেশন অ্যাক্টিভ রাখা হয়েছে।**", parse_mode="Markdown")
-
-    elif action == "adm_toggle_bot":
-        curr = get_setting("bot_status", "ON")
-        new_status = "OFF" if curr == "ON" else "ON"
-        set_setting("bot_status", new_status)
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=full_admin_dashboard())
-        bot.send_message(call.message.chat.id, f"🤖 **বটের স্ট্যাটাস পরিবর্তন করে `{new_status}` করা হয়েছে।**", parse_mode="Markdown")
-
-    conn.close()
 
 bot.infinity_polling()
