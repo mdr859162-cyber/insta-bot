@@ -6,6 +6,7 @@ import string
 import time
 import pyotp
 import re
+import io
 
 # ==================== CONFIGURATION ====================
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
@@ -55,7 +56,7 @@ def init_db():
         'task_rate': '3',
         'min_withdraw': '100',
         'ref_bonus': '1',
-        'welcome_msg': '✨ **আসসালামু আলাইকুম! GMAILHUB বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে জিমেইল সেল দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।\n\n👉 কাজ শুরু করতে নিচের **\'▶️ Start\'** বাটনে ক্লিক করুন! 🚀',
+        'welcome_msg': '✨ **আসসালামু আলাইকুম! InstaXhub বটে আপনাকে স্বাগতম** 🌟\n\n💼 আমাদের বটে ইনস্টাগ্রাম অ্যাকাউন্ট দিয়ে আপনি খুব সহজেই প্রতিদিন চমৎকার ইনকাম করতে পারবেন। এটি একটি ১০০% অটোমেটেড ও বিশ্বস্ত প্ল্যাটফর্ম।\n\n👉 কাজ শুরু করতে নিচের **\'▶️ Start\'** বাটনে ক্লিক করুন! 🚀',
         'ref_msg': '🎁 **আপনার রেফারেল লিংক ব্যবহার করে বন্ধুদের ইনভাইট করুন এবং বোনাস পান!**',
         'helpline_msg': '📞 **হেল্পলাইন প্যানেল:**\n\nযেকোনো সমস্যায় নিচে যোগাযোগ করুন:',
         'rules_text': '📜 **কাজের নিয়মাবলী:**\n\n১. বটের দেওয়া ইউজারনেম দিয়ে ইনস্টাগ্রাম আইডি খুলুন।\n২. সঠিক ২FA Secret Key দিন।',
@@ -113,11 +114,11 @@ def check_must_join(user_id):
 
 def send_must_join_msg(chat_id):
     channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
-    text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল চ্যানেলে যুক্ত হতে হবে!** 📢"
+    text = "⚠️ **বটটি ব্যবহার করার আগে বাধ্যতামূলক আমাদের অফিশিয়াল চ্যানেলে যুক্ত হতে হবে!** 📢\n\nনিচের লিংকে জয়েন করে '✅ জয়েন সম্পন্ন করেছি' বাটনে চাপ দিন।"
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📢 আমাদের চ্যানেলে জয়েন হন 🚀", url=channel_link),
+        types.InlineKeyboardButton("📢 আমাদের অফিশিয়াল গ্রুপে জয়েন হন 🚀", url=channel_link),
         types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি ⚡", callback_data="check_joined")
     )
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
@@ -167,10 +168,23 @@ def handle_start(message):
     user_id = message.from_user.id
     username = message.from_user.username or "নাই"
     
+    # রেফারেল হ্যান্ডলিং
+    args = message.text.split()
+    ref_by = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
+    
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, username, joined_date) VALUES (?, ?, ?)",
-                   (user_id, username, int(time.time())))
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (user_id, username, referred_by, joined_date) VALUES (?, ?, ?, ?)",
+                       (user_id, username, ref_by, int(time.time())))
+        if ref_by and ref_by != user_id:
+            ref_bonus = float(get_setting("ref_bonus", "1"))
+            cursor.execute("UPDATE users SET balance = balance + ?, total_balance = total_balance + ? WHERE user_id = ?", (ref_bonus, ref_bonus, ref_by))
+            try:
+                bot.send_message(ref_by, f"🎉 আপনার রেফারেল লিংকে একজন নতুন ইউজার যুক্ত হয়েছে! আপনি ৳{ref_bonus} বোনাস পেয়েছেন।")
+            except:
+                pass
     conn.commit()
     conn.close()
 
@@ -186,7 +200,7 @@ def click_start_callback(call):
     bot.answer_callback_query(call.id)
     
     if check_must_join(user_id):
-        success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
+        success_msg = "🎉 **স্বাগতম! InstaXhub বটে আপনাকে স্বাগতম। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
         send_must_join_msg(user_id)
@@ -196,10 +210,10 @@ def check_joined_callback(call):
     user_id = call.from_user.id
     if check_must_join(user_id):
         bot.answer_callback_query(call.id, "✅ জয়েন ভেরিফিকেশন সফল!", show_alert=True)
-        success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
+        success_msg = "🎉 **স্বাগতম! আপনার জয়েনিং সফল হয়েছে। নিচের মেনু থেকে কাজ শুরু করুন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        bot.answer_callback_query(call.id, "❌ আপনি এখনো চ্যানেলে জয়েন করেননি!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ আপনি এখনো গ্রুপে জয়েন করেননি! আগে লিঙ্ক থেকে জয়েন করুন।", show_alert=True)
 
 @bot.message_handler(commands=['admin'])
 def handle_admin_cmd(message):
@@ -221,7 +235,7 @@ def handle_task_callbacks(call):
     elif call.data == "get_2fa":
         bot.answer_callback_query(call.id)
         user_waiting_input[user_id] = "WAITING_2FA"
-        bot.send_message(user_id, "🔍 **ইনস্টাগ্রাম অ্যাকাউন্ট ভেরিফাই করা হচ্ছে...**\n\n🔑 **আপনার ইনস্টাগ্রামের সঠিক 2FA Key টি মেসেজে পাঠান:**", parse_mode="Markdown")
+        bot.send_message(user_id, "🔍 **ইনস্টাগ্রাম অ্যাকাউন্ট ভেরিফাই করা হচ্ছে...**\n\n🔑 **আপনার ইনস্টাগ্রামের সঠিক 2FA Secret Key টি মেসেজে পাঠান:**", parse_mode="Markdown")
 
 # ==================== MAIN ROUTER ====================
 @bot.message_handler(func=lambda msg: True)
@@ -242,7 +256,7 @@ def handle_all_messages(message):
                 cursor.execute("UPDATE users SET balance = balance + ?, total_balance = total_balance + ? WHERE user_id = ?", (amount, amount, target_uid))
                 conn.commit()
                 conn.close()
-                bot.send_message(user_id, f"✅ UID `{target_uid}` এ ৳{amount} টাকা এড করা হয়েছে।", parse_mode="Markdown")
+                bot.send_message(user_id, f"✅ UID `{target_uid}` এ ৳{amount} এড করা হয়েছে।", parse_mode="Markdown")
             else:
                 bot.send_message(user_id, "❌ **ভুল ফরম্যাট!** এভাবে লিখুন: `12345678 50`", parse_mode="Markdown")
             return
@@ -252,7 +266,7 @@ def handle_all_messages(message):
             if match:
                 target_uid, msg_content = int(match.group(1)), match.group(2)
                 try:
-                    bot.send_message(target_uid, f"📩 **মেসেজ:**\n\n{msg_content}", parse_mode="Markdown")
+                    bot.send_message(target_uid, f"📩 **এডমিন থেকে মেসেজ:**\n\n{msg_content}", parse_mode="Markdown")
                     bot.send_message(user_id, "✅ ইউজারের কাছে মেসেজ চলে গেছে!")
                 except Exception as e:
                     bot.send_message(user_id, f"❌ মেসেজ পাঠানো যায়নি: {str(e)}")
@@ -285,9 +299,10 @@ def handle_all_messages(message):
 
     # ২. ইউজার ২FA ইনপুট প্রসেস
     if user_id in user_waiting_input and user_waiting_input[user_id] == "WAITING_2FA":
-        if len(text.replace(" ", "")) >= 16:
+        clean_key = text.replace(" ", "")
+        if len(clean_key) >= 16:
             try:
-                totp = pyotp.TOTP(text.replace(" ", ""))
+                totp = pyotp.TOTP(clean_key)
                 current_code = totp.now()
                 del user_waiting_input[user_id]
                 
@@ -296,31 +311,35 @@ def handle_all_messages(message):
                     conn = get_db()
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO tasks (user_id, ig_username, ig_password, secret_key, created_at) VALUES (?, ?, ?, ?, ?)",
-                                   (user_id, task_info['username'], task_info['password'], text, int(time.time())))
+                                   (user_id, task_info['username'], task_info['password'], clean_key, int(time.time())))
                     cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", 
                                    (float(get_setting("task_rate", "3")), user_id))
                     conn.commit()
                     conn.close()
 
-                bot.send_message(user_id, f"✅ **2FA ভেরিফিকেশন সফল!**\n🔑 বর্তমান OTP কোড: `{current_code}`\n\nকাজটি চেকিংয়ে পাঠানো হয়েছে।", parse_mode="Markdown")
+                bot.send_message(user_id, f"✅ **2FA ভেরিফিকেশন সফল!**\n🔑 বর্তমান OTP কোড: `{current_code}`\n\nকাজটি সফলভাবে সাবমিট হয়েছে এবং চেকিংয়ে আছে।", parse_mode="Markdown")
             except Exception:
-                bot.send_message(user_id, "❌ **ভুল 2FA Key!** সঠিক সিক্রেট কি ইনপুট দিন।", parse_mode="Markdown")
+                bot.send_message(user_id, "❌ **ভুল 2FA Key!** সঠিক ইনস্টাগ্রাম Secret Key দিন।", parse_mode="Markdown")
         else:
-            bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক সিক্রেট কি দিন।", parse_mode="Markdown")
+            bot.send_message(user_id, "⚠️ **ভুল 2FA Key!** সঠিক ১৭ বা ১৬ ডিজিটের সিক্রেট কি দিন।", parse_mode="Markdown")
         return
 
-    # ৩. বাধ্যবাধকতা চেক
+    # ৩. বাধ্যবাধকতা চেক (জয়েন না করলে বট চলবে না)
     if not check_must_join(user_id):
         send_must_join_msg(user_id)
         return
 
-    # ৪. ইউজার মেনু বাটন
+    # ৪. ইউজার মেনু বাটন প্রসেস
     if text == "💼 কাজ শুরু করুন 🚀":
+        if get_setting("bot_status", "ON") == "OFF":
+            bot.send_message(user_id, "🚫 **বর্তমানে বট সাময়িকভাবে বন্ধ আছে!** পরে চেষ্টা করুন।")
+            return
+        
         task_rate = get_setting("task_rate", "3")
         ig_user, ig_pass = generate_credentials()
         user_active_task[user_id] = {"username": ig_user, "password": ig_pass}
 
-        msg = f"🤖 **নতুন কাজের তথ্য:**\n\n💰 **পাবেন:** ৳{task_rate}\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nআইডি খুলে 2FA সেটআপ করে নিচের বাটনে ক্লিক করুন।"
+        msg = f"🤖 **নতুন ইনস্টাগ্রাম আইডি তৈরির কাজ:**\n\n💰 **পাবেন:** ৳{task_rate}\n👤 **Username:** `{ig_user}`\n🔑 **Password:** `{ig_pass}`\n\nউপরের তথ্য দিয়ে ইনস্টাগ্রাম আইডি খুলে ২FA সেটআপ করুন এবং নিচের বাটনে ক্লিক করুন।"
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
@@ -339,8 +358,9 @@ def handle_all_messages(message):
         c_bal = res[0] if res else 0.0
         p_bal = res[1] if res else 0.0
         t_bal = res[2] if res else 0.0
+        min_w = get_setting("min_withdraw", "100")
         
-        msg = f"👤 **ইউজার প্রোফাইল:**\n\n🆔 **UID:** `{user_id}`\n💵 **বর্তমান ব্যালেন্স:** ৳{c_bal:.2f} BDT\n⏳ **পেন্ডিং ব্যালেন্স:** ৳{p_bal:.2f} BDT\n💰 **মোট অর্জিত ব্যালেন্স:** ৳{t_bal:.2f} BDT"
+        msg = f"👤 **ইউজার প্রোফাইল:**\n\n🆔 **UID:** `{user_id}`\n💵 **বর্তমান ব্যালেন্স:** ৳{c_bal:.2f} BDT\n⏳ **পেন্ডিং ব্যালেন্স:** ৳{p_bal:.2f} BDT\n💰 **মোট অর্জিত ব্যালেন্স:** ৳{t_bal:.2f} BDT\n\n💳 **মিনিমাম উইথড্র:** ৳{min_w} BDT"
         bot.send_message(user_id, msg, parse_mode="Markdown")
 
     elif text == "📊 কাজের রিপোর্ট 📈":
@@ -360,9 +380,9 @@ def handle_all_messages(message):
         t_bal = user_data[1] if user_data else 0.0
 
         report_msg = (
-            f"📊 **আপনার কাজের রিপোর্ট:**\n\n"
+            f"📊 **আপনার কাজের আপডেট রিপোর্ট:**\n\n"
             f"⏳ **পেন্ডিং কাজ:** {pending_cnt} টি (৳{p_bal:.2f})\n"
-            f"✅ **অনুমোদিত (Approved) কাজ:** {approved_cnt} টি\n"
+            f"✅ **অনুমোদিত কাজ:** {approved_cnt} টি\n"
             f"💰 **মোট কাজের ইনকাম:** ৳{t_bal:.2f} BDT"
         )
         bot.send_message(user_id, report_msg, parse_mode="Markdown")
@@ -381,7 +401,7 @@ def handle_all_messages(message):
         ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
         ref_bonus = get_setting("ref_bonus", "1")
         custom_ref_msg = get_setting("ref_msg")
-        msg = f"{custom_ref_msg}\n\n🔗 **আপনার রেফারেল লিংক:**\n{ref_link}\n\nপ্রতিটি সফল রেফারে পাবেন ৳{ref_bonus} বোনাস!"
+        msg = f"{custom_ref_msg}\n\n🔗 **আপনার রেফারেল লিংক:**\n`{ref_link}`\n\nপ্রতিটি সফল রেফারে পাবেন ৳{ref_bonus} বোনাস!"
         bot.send_message(user_id, msg, parse_mode="Markdown")
 
     elif text == "🆘 হেল্পলাইন 📞":
@@ -392,7 +412,7 @@ def handle_all_messages(message):
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             types.InlineKeyboardButton("🧑‍💼 Admin Support", url=f"https://t.me/{admin_user}"),
-            types.InlineKeyboardButton("👥 Group Support", url=channel_link)
+            types.InlineKeyboardButton("👥 Support Group", url=channel_link)
         )
         bot.send_message(user_id, custom_help_msg, reply_markup=markup, parse_mode="Markdown")
 
@@ -401,36 +421,62 @@ def handle_all_messages(message):
 def handle_admin_callbacks(call):
     user_id = call.from_user.id
     if not is_admin(user_id):
-        bot.answer_callback_query(call.id, "❌ অনুমতি নেই!")
+        bot.answer_callback_query(call.id, "❌ আপনার এডমিন অনুমতি নেই!")
         return
 
     action = call.data
     bot.answer_callback_query(call.id)
 
+    conn = get_db()
+    cursor = conn.cursor()
+
     if action == "adm_top_ref":
-        bot.send_message(call.message.chat.id, "🏆 **টপ ৫ রেফারার তালিকার ফিচার ডাটাবেজে যুক্ত করা হয়েছে।**", parse_mode="Markdown")
+        cursor.execute("SELECT username, user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
+        top_refs = cursor.fetchall()
+        msg = "🏆 **টপ ৫ রেফারার তালিকা:**\n\n"
+        for i, u in enumerate(top_refs, 1):
+            uname = f"@{u[0]}" if u[0] != "নাই" else f"ID: {u[1]}"
+            msg += f"{i}. {uname} - ৳{u[2]:.2f}\n"
+        bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
 
     elif action == "adm_top_work":
-        bot.send_message(call.message.chat.id, "🏆 **টপ ৫ ওয়ার্কার তালিকার ফিচার ডাটাবেজে যুক্ত করা হয়েছে।**", parse_mode="Markdown")
+        cursor.execute("SELECT user_id, COUNT(*) as cnt FROM tasks WHERE status = 'APPROVED' GROUP BY user_id ORDER BY cnt DESC LIMIT 5")
+        top_workers = cursor.fetchall()
+        msg = "🏆 **টপ ৫ ওয়ার্কার তালিকা:**\n\n"
+        for i, w in enumerate(top_workers, 1):
+            msg += f"{i}. UID: `{w[0]}` - মোট কাজ: {w[1]} টি\n"
+        if not top_workers:
+            msg += "এখনো কোনো কাজ অনুমোদিত হয়নি।"
+        bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
 
     elif action == "adm_add_bal":
         admin_states[user_id] = "adm_add_bal"
-        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং টাকা লিখুন:**\n(ফরম্যাট: 12345678 আপনার মেসেজ/টাকা)", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং পরিমাণ লিখুন:**\n(ফরম্যাট: `12345678 50`)", parse_mode="Markdown")
 
     elif action == "adm_custom_msg":
         admin_states[user_id] = "adm_custom_msg"
-        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\n(ফরম্যাট: 12345678 আপনার মেসেজ)", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "✉️ **ইউজার ID এবং মেসেজ লিখুন:**\n(ফরম্যাট: `12345678 আপনার মেসেজ`)", parse_mode="Markdown")
 
     elif action == "adm_stock_info":
-        conn = get_db()
-        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'PENDING'")
+        pending = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'APPROVED'")
-        total = cursor.fetchone()[0]
-        conn.close()
-        bot.send_message(call.message.chat.id, f"📊 **বর্তমান স্টক সংখ্যা:** {total} টি আইডি।", parse_mode="Markdown")
+        approved = cursor.fetchone()[0]
+        msg = f"📊 **বর্তমান ইনস্টাগ্রাম স্টক তথ্য:**\n\n⏳ পেন্ডিং স্টক: {pending} টি\n✅ অনুমোদিত/রেডি স্টক: {approved} টি"
+        bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
 
     elif action == "adm_stock_dl":
-        bot.send_message(call.message.chat.id, "📲 **স্টক ফাইল ডাউনলোড শুরু হয়েছে...**", parse_mode="Markdown")
+        cursor.execute("SELECT ig_username, ig_password, secret_key FROM tasks")
+        rows = cursor.fetchall()
+        if rows:
+            data = "Username | Password | 2FA Key\n" + "-"*40 + "\n"
+            for r in rows:
+                data += f"{r[0]} | {r[1]} | {r[2]}\n"
+            bio = io.BytesIO(data.encode('utf-8'))
+            bio.name = "instagram_stock.txt"
+            bot.send_document(call.message.chat.id, bio, caption="📲 **সকল ইনস্টাগ্রাম স্টকের ডাউনলোড ফাইল**")
+        else:
+            bot.send_message(call.message.chat.id, "❌ ডাটাবেজে কোনো স্টক ফাইল নেই!")
 
     elif action == "adm_task_rate":
         admin_states[user_id] = "set_task_rate"
@@ -446,7 +492,7 @@ def handle_admin_callbacks(call):
 
     elif action == "adm_edit_channel":
         admin_states[user_id] = "set_channel_link"
-        bot.send_message(call.message.chat.id, "📢 **নতুন সাপোর্ট গ্রুপ লিংক পাঠান:**", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📢 **নতুন সাপোর্ট গ্রুপ/চ্যানেল লিংক পাঠান:**", parse_mode="Markdown")
 
     elif action == "adm_edit_rules":
         admin_states[user_id] = "set_rules_text"
@@ -473,10 +519,11 @@ def handle_admin_callbacks(call):
         bot.send_message(call.message.chat.id, "📢 **সব ইউজারের কাছে পাঠানোর জন্য ব্রডকাস্ট মেসেজ লিখুন:**", parse_mode="Markdown")
 
     elif action == "adm_upload_report":
-        bot.send_message(call.message.chat.id, "📥 **বায়ার রিপোর্ট আপলোড অপশন প্রস্তুত।**", parse_mode="Markdown")
+        admin_states[user_id] = "set_upload_report"
+        bot.send_message(call.message.chat.id, "📥 **বায়ার রিপোর্ট দেওয়ার অপশন তৈরি করা আছে। নতুন কাজের আপডেট মেসেজ বা তথ্য এখানে পাঠান:**", parse_mode="Markdown")
 
     elif action == "adm_filter_setup":
-        bot.send_message(call.message.chat.id, "⚙️ **রিপোর্ট ফিল্টার সেটআপ প্যানেল চালু করা হয়েছে।**", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "⚙️ **ফিল্টার সেটআপ করা আছে। স্ট্যাটাস অনুযায়ী ভ্যালিডেশন অ্যাক্টিভ রাখা হয়েছে।**", parse_mode="Markdown")
 
     elif action == "adm_toggle_bot":
         curr = get_setting("bot_status", "ON")
@@ -484,5 +531,7 @@ def handle_admin_callbacks(call):
         set_setting("bot_status", new_status)
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=full_admin_dashboard())
         bot.send_message(call.message.chat.id, f"🤖 **বটের স্ট্যাটাস পরিবর্তন করে `{new_status}` করা হয়েছে।**", parse_mode="Markdown")
+
+    conn.close()
 
 bot.infinity_polling()
