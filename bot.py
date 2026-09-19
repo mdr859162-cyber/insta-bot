@@ -9,8 +9,8 @@ import time
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
 ADMIN_IDS = [8422485324]
 
-# আপনার সাপোর্ট গ্রুপের সঠিক ইউজারনেম ও লিংক
-SUPPORT_GROUP_USERNAME = "@instaXhubsaport" 
+# আপনার নির্দিষ্ট সাপোর্ট গ্রুপের ইউজারনেম ও লিংক
+SUPPORT_GROUP_USERNAME = "@instaXhubsaport"
 SUPPORT_GROUP_LINK = "https://t.me/instaXhubsaport"
 ADMIN_USERNAME = "Adiminsaport"
 
@@ -91,35 +91,15 @@ def check_must_join(user_id):
         if member.status in ['creator', 'administrator', 'member']:
             return True
         return False
-    except Exception as e:
-        # গ্রুপে বটকে অ্যাডমিন না বানালে বা ইউজারনেম ভুল হলে চেক ফেল করবে
-        print(f"Join Check Error: {e}")
+    except Exception:
         return False
 
 def send_must_join_msg(chat_id):
-    # ১. প্রথমে নিচের মেনু বাটনগুলো সম্পূর্ণ মুছে ফেলার কমান্ড
+    # আপনার সাপোর্ট গ্রুপের সঠিক লিংক ও ফরম্যাট
+    msg_text = f"🚀 To use this bot, you must join our channel:\n{SUPPORT_GROUP_LINK}"
+    
     remove_menu = types.ReplyKeyboardRemove()
-    
-    # ২. জয়েন করার বাটন তৈরি
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("📢 অফিশিয়াল সাপোর্ট গ্রুপে জয়েন করুন", url=SUPPORT_GROUP_LINK),
-        types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_joined")
-    )
-    
-    # মেসেজ পাঠানো এবং নিচের কিবোর্ড লুকিয়ে ইনলাইন বাটন দেখানো
-    bot.send_message(
-        chat_id, 
-        "⚠️ **আমাদের বটে কাজ করার জন্য অবশ্যই অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হন।**", 
-        reply_markup=remove_menu, 
-        parse_mode="Markdown"
-    )
-    bot.send_message(
-        chat_id, 
-        "👉 জয়েন হয়ে নিচের বাটনে চাপ দিয়ে ভেরিফাই করুন:", 
-        reply_markup=markup, 
-        parse_mode="Markdown"
-    )
+    bot.send_message(chat_id, msg_text, reply_markup=remove_menu, disable_web_page_preview=False)
 
 # ==================== KEYBOARDS ====================
 def main_menu():
@@ -147,30 +127,13 @@ def handle_start(message):
     conn.commit()
     conn.close()
 
-    # গ্রুপে যুক্ত আছে কিনা ভেরিফিকেশন
+    # গ্রুপে যুক্ত আছে কিনা ভেরিফাই করবে
     if check_must_join(user_id):
-        # যুক্ত থাকলে নিচের কাজ শুরু করার মূল মেনু দেখাবে
         text = get_setting("welcome_msg")
         success_msg = f"{text}\n\n🎉 **নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশনটি বেছে নিন।** 👇"
         bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
     else:
-        # যুক্ত না থাকলে মেনু বাটন লুকিয়ে শুধু জয়েন বাটন দেখাবে
         send_must_join_msg(user_id)
-
-@bot.callback_query_handler(func=lambda call: call.data == "check_joined")
-def check_joined_callback(call):
-    user_id = call.from_user.id
-    if check_must_join(user_id):
-        bot.answer_callback_query(call.id, "✅ ভেরিফিকেশন সফল হয়েছে!", show_alert=False)
-        text = get_setting("welcome_msg")
-        success_msg = f"{text}\n\n🎉 **আপনার জয়েনিং সফল হয়েছে! নিচের মেনু থেকে কাজ শুরু করুন।** 👇"
-        bot.send_message(user_id, success_msg, reply_markup=main_menu(), parse_mode="Markdown")
-    else:
-        bot.answer_callback_query(
-            call.id, 
-            "⚠️ দয়া করে আগে আমাদের অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হন, তারপরে কাজ শুরু করুন!", 
-            show_alert=True
-        )
 
 @bot.message_handler(func=lambda msg: True)
 def handle_all_messages(message):
