@@ -11,8 +11,10 @@ import io
 # ==================== CONFIGURATION ====================
 TOKEN = "8820592126:AAF8UF5emIHX4fsh2eUZ9wrMUWI0djqsnVs"
 ADMIN_IDS = [8422485324]
+
+# সঠিকভাবে আপডেট করা ইউজারনেম ও লিংক
+SUPPORT_GROUP_USERNAME = "@instaXhubsaport" 
 SUPPORT_GROUP_LINK = "https://t.me/instaXhubsaport"
-SUPPORT_GROUP_USERNAME = "@instaXhubsaport"
 ADMIN_USERNAME = "Adiminsaport"
 
 bot = telebot.TeleBot(TOKEN)
@@ -67,7 +69,7 @@ def init_db():
     }
     
     for k, v in defaults.items():
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, v))
         
     conn.commit()
     conn.close()
@@ -105,15 +107,17 @@ def check_must_join(user_id):
     if is_admin(user_id):
         return True
     try:
+        # গ্রুপ ইউজারনেম দিয়ে চেক
         member = bot.get_chat_member(SUPPORT_GROUP_USERNAME, user_id)
         if member.status in ['creator', 'administrator', 'member']:
             return True
         return False
-    except Exception:
+    except Exception as e:
+        print(f"Join Check Error: {e}")
         return False
 
 def send_must_join_msg(chat_id):
-    channel_link = get_setting("@instaXhubsaport", SUPPORT_GROUP_LINK)
+    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
     
     text = (
         "⚠️ **আমাদের বটে কাজ করার জন্য অবশ্যই অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হন।**"
@@ -125,7 +129,7 @@ def send_must_join_msg(chat_id):
         types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_joined")
     )
     
-    # জয়েন না করা পর্যন্ত মেনু কিবোর্ড রিমুভ রাখা হবে
+    # জয়েন না করা পর্যন্ত মেনু বাটন রিমুভ রাখবে
     remove_keyboard = types.ReplyKeyboardRemove()
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
