@@ -30,7 +30,7 @@ settings = {
     'refer_bonus': 2.0,
     'welcome_msg': "👋 *আসালামু আলাইকুম!*\n✨ **Insta X Hub Management Bot**-এ আপনাকে স্বাগতম!",
     'rules_text': "⚠️ *কাজের নিয়ম:* \nসঠিকভাবে ইনস্টাগ্রাম একাউন্ট খুলে 2FA সেট করে জমা দিন।",
-    'video_text': "🎬 *টিউটোরিয়াল ভিডিও:* \nখুব শীঘ্রই ভিডিও আসছে!",
+    'video_text': "🎬 *কাজ শেখার ভিডিও টিউটোরিয়াল:*\n\nভিডিও দেখে কাজ শিখতে নিচের লিংকে ক্লিক করুন:\nhttps://youtube.com",
     'refer_msg': "🎁 *রেফার করে আয় করুন!*",
     'helpline_msg': "🎧 *হেল্পলাইন ও সাপোর্ট:* \nযেকোনো সমস্যায় আমাদের চ্যানেলে জয়েন করুন বা এডমিনকে মেসেজ দিন।"
 }
@@ -92,6 +92,7 @@ def build_main_menu():
     markup.add("💰 ব্যালেন্স & উইথড্র 💳")
     markup.add("📊 কাজের রিপোর্ট", "📜 কাজের নিয়ম ⚠️")
     markup.add("🎁 রেফার করুন", "🆘 হেল্পলাইন 📞")
+    markup.add("🎬 কাজ শেখার ভিডিও") # ইউজারদের জন্য ফিক্স করা ভিডিও বাটন
     return markup
 
 def build_task_action_keyboard():
@@ -161,7 +162,6 @@ def send_welcome(message):
     user_id = message.from_user.id
     u_data = get_user_data(user_id)
     
-    # Check Referral
     args = message.text.split()
     if len(args) > 1 and args[1].isdigit():
         ref_id = int(args[1])
@@ -210,9 +210,8 @@ def callback_listener(call):
         username = active_user_tasks[user_id]['username']
         bot.answer_callback_query(call.id, "🔍 চেক করা হচ্ছে...")
         status_msg = bot.send_message(call.message.chat.id, "⏳ *বট ইনস্টাগ্রাম একাউন্টটি চেক করছে...*", parse_mode="Markdown")
-        time.sleep(2)
+        time.sleep(1.5)
         
-        # 1. Instagram Profile Existence Check
         if check_instagram_user_exists(username):
             try:
                 bot.delete_message(call.message.chat.id, status_msg.message_id)
@@ -233,7 +232,6 @@ def callback_listener(call):
             bot.send_message(call.message.chat.id, "⚠️ আপনার কাজের সেশনটির মেয়াদ শেষ হয়ে গেছে।")
             return
 
-        # Add to Admin Download Stock
         download_stock.append({
             'user_id': user_id,
             'username': task_data['username'],
@@ -260,7 +258,7 @@ def callback_listener(call):
             parse_mode="Markdown"
         )
 
-    # Admin Panel Commands
+    # Admin Controls with Clean State Setup
     elif call.data == "admin_toggle_bot":
         if user_id == ADMIN_ID:
             settings['bot_active'] = not settings['bot_active']
@@ -285,8 +283,8 @@ def callback_listener(call):
     elif call.data.startswith("admin_edit_"):
         if user_id == ADMIN_ID:
             key = call.data.replace("admin_edit_", "")
-            admin_states[user_id] = key
-            bot.send_message(call.message.chat.id, f"✍️ নতুন ইনপুট পাঠাও `{key}` এর জন্য:", parse_mode="Markdown")
+            admin_states[user_id] = key  # Sets clear state
+            bot.send_message(call.message.chat.id, f"✍️ **{key.upper()}** এর জন্য নতুন ইনপুট বা লিংক লিখে পাঠান:", parse_mode="Markdown")
 
 def process_2fa_key(message):
     user_id = message.from_user.id
@@ -294,7 +292,7 @@ def process_2fa_key(message):
     
     try:
         totp = pyotp.TOTP(raw_key)
-        code = totp.now() # Validate Key
+        code = totp.now()
         
         if user_id in active_user_tasks:
             active_user_tasks[user_id]['temp_2fa'] = raw_key
@@ -315,7 +313,7 @@ def handle_text(message):
     user_id = message.from_user.id
     text = message.text
 
-    # Handle Admin State Inputs
+    # Fixed Admin State Input Handling (Clears state immediately)
     if user_id == ADMIN_ID and user_id in admin_states:
         state = admin_states.pop(user_id)
         if state == "welcome": settings['welcome_msg'] = text
@@ -323,7 +321,9 @@ def handle_text(message):
         elif state == "video": settings['video_text'] = text
         elif state == "ref_msg": settings['refer_msg'] = text
         elif state == "help_msg": settings['helpline_msg'] = text
-        bot.send_message(message.chat.id, "✅ *সাফল্যের সাথে তথ্য আপডেট করা হয়েছে!*", parse_mode="Markdown")
+        elif state == "channel": global SUPPORT_CHANNEL_LINK; SUPPORT_CHANNEL_LINK = text
+        
+        bot.send_message(message.chat.id, f"✅ *সাফল্যের সাথে `{state.upper()}` আপডেট করা হয়েছে!*", parse_mode="Markdown")
         return
 
     if text == "🚀 কাজ শুরু করুন":
@@ -364,6 +364,9 @@ def handle_text(message):
 
     elif text == "📜 কাজের নিয়ম ⚠️":
         bot.send_message(message.chat.id, settings['rules_text'], parse_mode="Markdown")
+
+    elif text == "🎬 কাজ শেখার ভিডিও":
+        bot.send_message(message.chat.id, settings['video_text'], parse_mode="Markdown")
 
     elif text == "🎁 রেফার করুন":
         u_data = get_user_data(user_id)
