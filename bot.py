@@ -113,7 +113,7 @@ def check_must_join(user_id):
         return False
 
 def send_must_join_msg(chat_id):
-    channel_link = get_setting("channel_link", SUPPORT_GROUP_LINK)
+    channel_link = get_setting("@instaXhubsaport", SUPPORT_GROUP_LINK)
     
     text = (
         "⚠️ **আমাদের বটে কাজ করার জন্য অবশ্যই অফিশিয়াল সাপোর্ট গ্রুপে যুক্ত হন।**"
