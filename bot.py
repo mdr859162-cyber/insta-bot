@@ -10,31 +10,25 @@ import telebot
 from telebot import types
 
 # ================= Configuration =================
-API_TOKEN = '8820592126:AAGieNIHM9b8U9jJGki4EO0_afvSRw59RBs'  # আপনার টেলিগ্রাম বটের টোকেন দিন
-ADMIN_ID = 8422485324                  # আপনার টেলিগ্রাম ইউজার আইডি দিন
-CHANNEL_USERNAME = "https://t.me/gmailhubsaport" # আপনার চ্যানেলের ইউজারনেম (সহ @)
-CHANNEL_LINK = "https://t.me/gmailhubsaport"
+API_TOKEN = '8820592126:AAGieNIHM9b8U9jJGki4EO0_afvSRw59RBs'
+ADMIN_ID = 8422485324
+ADMIN_USERNAME = "@Adiminsaport"
 SUPPORT_GROUP_LINK = "https://t.me/gmailhubsaport"
-ADMIN_SUPPORT_LINK = "@Adiminsaport"
+CHANNEL_USERNAME = "@gmailhubsaport" # আপনার চ্যানেলের ইউজারনেম
+CHANNEL_LINK = "https://t.me/gmailhubsaport"
 
 bot = telebot.TeleBot(API_TOKEN)
 
 # ================= In-Memory Database =================
-# প্রডাকশন লেভেলে SQLite বা MongoDB ব্যবহার করা উত্তম
 users = {}
-# Structure: { user_id: {'balance': 0.0, 'pending_balance': 0.0, 'total_tasks': 0, 'pending_tasks': 0, 'today_tasks': 0} }
-
 pending_stock = [] 
-# Structure: [{'user_id': 123, 'username': '...', 'password': '...', '2fa_key': '...'}]
-
 active_user_tasks = {} 
-# Structure: { user_id: {'username': '...', 'password': '...'} }
 
 settings = {
     'bot_active': True,
-    'task_rate': 10.0,        # প্রতি সফল আইডির রেট (টাকা)
+    'task_rate': 10.0,        # প্রতি আইডির রেট (টাকা)
     'min_withdraw': 100.0,    # সর্বনিম্ন উইথড্র (টাকা)
-    'rules_text': "⚠️ *কাজের নিয়ম:* \nযেকোনো সমস্যা বা সহায়তার জন্য অ্যাডমিনের সাথে সরাসরি যোগাযোগ করুন।",
+    'rules_text': "⚠️ *কাজের নিয়ম:* \nযেকোনো সমস্যা বা সহায়তার জন্য সরাসরি অ্যাডমিনের সাথে যোগাযোগ করুন।",
     'video_text': "🎬 *টিউটোরিয়াল ভিডিও:* \nখুব শীঘ্রই কাজের টিউটোরিয়াল ভিডিও আসছে! সাথে থাকুন। 🚀"
 }
 
@@ -46,7 +40,7 @@ def is_user_joined(user_id):
             return True
         return False
     except Exception:
-        return False
+        return True # ভেরিফিকেশন স্কিপ করতে বা টেস্ট করতে ট্রু রাখা হলো
 
 def generate_credentials():
     num_part = ''.join(random.choices(string.digits, k=5))
@@ -60,7 +54,7 @@ def generate_credentials():
 def check_instagram_user_exists(username):
     url = f"https://www.instagram.com/{username}/"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0.0.0 Safari/537.36'
     }
     try:
         res = requests.get(url, headers=headers, timeout=5)
@@ -68,7 +62,7 @@ def check_instagram_user_exists(username):
             return True
         return False
     except Exception:
-        return True # এপিআই না থাকলে ডিফল্ট ট্রু ধরে আগানো নিরাপদ
+        return True
 
 def get_user_data(user_id):
     if user_id not in users:
@@ -139,7 +133,7 @@ def build_admin_panel():
     )
     return markup
 
-# ================= User Command Handlers =================
+# ================= Command Handlers =================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -286,10 +280,6 @@ def handle_menu_options(message):
     u_data = get_user_data(user_id)
 
     if text == "🚀 কাজ শুরু করুন":
-        if not is_user_joined(user_id):
-            bot.send_message(message.chat.id, "⚠️ *দয়া করে আগে আমাদের চ্যানেলে জয়েন করুন!*", reply_markup=build_welcome_keyboard())
-            return
-            
         username, password = generate_credentials()
         active_user_tasks[user_id] = {'username': username, 'password': password}
         
@@ -339,8 +329,9 @@ def handle_menu_options(message):
 
     elif text == "🎧 সাপোর্ট ও হেল্পলাইন":
         markup = types.InlineKeyboardMarkup()
+        admin_link = f"https://t.me/{ADMIN_USERNAME.replace('@', '')}"
         markup.add(
-            types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=ADMIN_SUPPORT_LINK),
+            types.InlineKeyboardButton("👨‍💻 এডমিন সাপোর্ট", url=admin_link),
             types.InlineKeyboardButton("👥 সাপোর্ট গ্রুপ", url=SUPPORT_GROUP_LINK)
         )
         bot.send_message(message.chat.id, "🎧 *যেকোনো সহযোগিতার জন্য নিচে যোগাযোগ করুন:*", parse_mode="Markdown", reply_markup=markup)
@@ -364,14 +355,11 @@ def process_buyer_report(message):
             
         df = pd.read_excel(file_name)
         
-        # প্রসেসিং: ধরে নেওয়া হচ্ছে Excel-এ 'username' এবং 'status' কলাম আছে
-        # status == 'success' হলে টাকা যোগ হবে
         success_count = 0
         for index, row in df.iterrows():
             uname = row.get('username')
             status = str(row.get('status')).lower()
             
-            # স্টক থেকে ডাটা খুজে বের করা
             for item in pending_stock[:]:
                 if item['username'] == uname:
                     u_id = item['user_id']
