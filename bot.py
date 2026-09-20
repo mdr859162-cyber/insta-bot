@@ -28,10 +28,10 @@ settings = {
     'bot_active': True,
     'task_rate': 10.0,
     'min_withdraw': 100.0,
-    'refer_bonus': 2.0,
+    'refer_bonus': 10.0,  # Updated to 10 TK as per your request
     'welcome_msg': "👋 *আসালামু আলাইকুম!*\n✨ **Insta X Hub Management Bot**-এ আপনাকে স্বাগতম!",
     'rules_text': "⚠️ *কাজের নিয়ম:* \nসঠিকভাবে ইনস্টাগ্রাম একাউন্ট খুলে 2FA সেট করে জমা দিন।",
-    'video_text': "🎬 *কাজ শেখার ভিডিও টিউটোরিয়াল:*\n\nভিডিও দেখে কাজ শিখতে নিচের লিংকে ক্লিক করুন:\nhttps://youtube.com",
+    'video_url': "https://t.me/instaXhubsaport", # Support group post/video link
     'refer_msg': "🎁 *রেফার করে আয় করুন!*",
     'helpline_msg': "🎧 *হেল্পলাইন ও সাপোর্ট:* \nযেকোনো সমস্যায় আমাদের চ্যানেলে জয়েন করুন বা এডমিনকে মেসেজ দিন।"
 }
@@ -72,7 +72,9 @@ def get_user_data(user_id):
             'today_tasks': 0,
             'referrals': 0,
             'refer_income': 0.0,
-            'referred_by': None
+            'referred_by': None,
+            'is_first_task_done': False,
+            'ip_sim_hash': None # Device tracking
         }
     return users[user_id]
 
@@ -180,12 +182,15 @@ def send_welcome(message):
         ref_id = int(args[1])
         if ref_id != user_id and u_data['referred_by'] is None:
             u_data['referred_by'] = ref_id
-            ref_user = get_user_data(ref_id)
-            ref_user['referrals'] += 1
-            ref_user['refer_income'] += settings['refer_bonus']
-            ref_user['balance'] += settings['refer_bonus']
+            
+            # Send Notification to Referrer (Without instant bonus, first task pending)
             try:
-                bot.send_message(ref_id, f"🎉 আপনার রেফারেল লিংকে একজন নতুন ইউজার যুক্ত হয়েছেন! বোনাস: {settings['refer_bonus']} টাকা।")
+                bot.send_message(
+                    ref_id, 
+                    f"🎉 *আপনার রেফার লিংক থেকে একজন ইউজার বটে যুক্ত হয়েছেন!*\n\n"
+                    f"👉 তার প্রথম কাজটি সফলভাবে জমা হলে আপনি পাবেন `{settings['refer_bonus']:.0f}` টাকা বোনাস।",
+                    parse_mode="Markdown"
+                )
             except Exception:
                 pass
 
@@ -258,6 +263,44 @@ def callback_listener(call):
         u_data['today_tasks'] += 1
         u_data['pending_balance'] += settings['task_rate']
         
+        # Checking First Completed Task & Fake Referral Verification Logic
+        if not u_data['is_first_task_done'] and u_data['referred_by'] is not None:
+            ref_id = u_data['referred_by']
+            ref_user = get_user_data(ref_id)
+            
+            # Simulated Device/IP Same Check
+            is_same_device_or_ip = False
+            if u_data.get('ip_sim_hash') and ref_user.get('ip_sim_hash'):
+                if u_data['ip_sim_hash'] == ref_user['ip_sim_hash']:
+                    is_same_device_or_ip = True
+            
+            if is_same_device_or_ip:
+                try:
+                    bot.send_message(
+                        ref_id,
+                        "❌ *রেফার বোনাস প্রদান ব্যর্থ হয়েছে!*\n\n"
+                        "⚠️ আপনি একই আইডি/আইপি দিয়ে ফেক রেফার করার চেষ্টা করেছেন। বোনাস প্রদান বাতিল করা হলো। সঠিক রেফার করে আয় করুন।",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+            else:
+                # Valid Referral Bonus Awarded
+                ref_user['referrals'] += 1
+                ref_user['refer_income'] += settings['refer_bonus']
+                ref_user['balance'] += settings['refer_bonus']
+                try:
+                    bot.send_message(
+                        ref_id,
+                        f"🎉 *অভিনন্দন! আপনার রেফারেল ইউজারের ১ম কাজ সফলভাবে জমা হয়েছে।*\n\n"
+                        f"💰 আপনার অ্যাকাউন্টে **{settings['refer_bonus']:.0f} টাকা** রেফার বোনাস যোগ করা হয়েছে।",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+            
+            u_data['is_first_task_done'] = True
+
         if 'task_msg_id' in task_data:
             try:
                 bot.delete_message(call.message.chat.id, task_data['task_msg_id'])
@@ -357,6 +400,12 @@ def callback_listener(call):
             admin_states[user_id] = "refer_bonus"
             bot.send_message(call.message.chat.id, f"🎁 নতুন **রেফার বোনাস** এমাউন্ট লিখে পাঠান (বর্তমান: {settings['refer_bonus']}):", parse_mode="Markdown")
 
+    # FIXED: Broadcast to All Users Button
+    elif call.data == "admin_broadcast":
+        if user_id == ADMIN_ID:
+            msg = bot.send_message(call.message.chat.id, "📢 **সবাইকে যে মেসেজটি পাঠাতে চান তা লিখে পাঠান:**", parse_mode="Markdown")
+            bot.register_next_step_handler(msg, process_broadcast_msg)
+
     elif call.data == "admin_upload_report_menu":
         if user_id == ADMIN_ID:
             markup = types.InlineKeyboardMarkup()
@@ -375,6 +424,22 @@ def callback_listener(call):
         if user_id == ADMIN_ID:
             msg = bot.send_message(call.message.chat.id, "📸 বায়ার রিপোর্টের স্ক্রিনশটটি পাঠান:", parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_ss_report)
+
+    # FIXED: Edit Buttons (Ref Message, Helpline Message, etc.)
+    elif call.data == "admin_edit_ref_msg":
+        if user_id == ADMIN_ID:
+            admin_states[user_id] = "ref_msg"
+            bot.send_message(call.message.chat.id, "✍️ নতুন **রেফারাল মেসেজ** লিখে পাঠান:", parse_mode="Markdown")
+
+    elif call.data == "admin_edit_help_msg":
+        if user_id == ADMIN_ID:
+            admin_states[user_id] = "help_msg"
+            bot.send_message(call.message.chat.id, "✍️ নতুন **হেল্পলাইন মেসেজ** লিখে পাঠান:", parse_mode="Markdown")
+
+    elif call.data == "admin_edit_video":
+        if user_id == ADMIN_ID:
+            admin_states[user_id] = "video_url"
+            bot.send_message(call.message.chat.id, "✍️ সাপোর্ট গ্রুপের নতুন **ভিডিও পোস্ট লিংক** লিখে পাঠান:", parse_mode="Markdown")
 
     elif call.data.startswith("admin_edit_"):
         if user_id == ADMIN_ID:
@@ -423,7 +488,20 @@ def process_2fa_key(message):
             )
             bot.register_next_step_handler(msg, process_2fa_key)
 
-# Admin Functions Step Handlers
+# Admin Step Handlers
+def process_broadcast_msg(message):
+    success_count = 0
+    fail_count = 0
+    bot.send_message(message.chat.id, "⏳ ব্রডকাস্ট পাঠানো শুরু হয়েছে...")
+    for u_id in list(users.keys()):
+        try:
+            bot.send_message(u_id, f"📢 *বিশেষ ঘোষণা:*\n\n{message.text}", parse_mode="Markdown")
+            success_count += 1
+            time.sleep(0.05)
+        except Exception:
+            fail_count += 1
+    bot.send_message(message.chat.id, f"✅ *ব্রডকাস্ট সম্পন্ন!*\n\n🎯 সফল: `{success_count}` টি\n❌ ব্যর্থ: `{fail_count}` টি", parse_mode="Markdown")
+
 def process_target_user_for_msg(message):
     try:
         target_id = int(message.text.strip())
@@ -486,7 +564,7 @@ def handle_text(message):
             elif state == "refer_bonus": settings['refer_bonus'] = float(text)
             elif state == "welcome": settings['welcome_msg'] = text
             elif state == "rules": settings['rules_text'] = text
-            elif state == "video": settings['video_text'] = text
+            elif state == "video_url": settings['video_url'] = text
             elif state == "ref_msg": settings['refer_msg'] = text
             elif state == "help_msg": settings['helpline_msg'] = text
             elif state == "channel": global SUPPORT_CHANNEL_LINK; SUPPORT_CHANNEL_LINK = text
@@ -546,8 +624,18 @@ def handle_text(message):
     elif text == "📜 কাজের নিয়ম ⚠️":
         bot.send_message(message.chat.id, settings['rules_text'], parse_mode="Markdown")
 
+    # NEW: Work Video Button with Direct Group Link
     elif text == "🎬 কাজ শেখার ভিডিও":
-        bot.send_message(message.chat.id, settings['video_text'], parse_mode="Markdown")
+        markup = types.InlineKeyboardMarkup()
+        btn = types.InlineKeyboardButton("▶️ ভিডিও দেখতে এখানে ক্লিক করুন", url=settings['video_url'])
+        markup.add(btn)
+        
+        bot.send_message(
+            message.chat.id,
+            "🎬 *কাজ শেখার জন্য নিচের বাটনে ক্লিক করুন এবং ভিডিও দেখুন:*",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
 
     elif text == "🎁 রেফার করুন":
         u_data = get_user_data(user_id)
@@ -561,7 +649,7 @@ def handle_text(message):
             f"📊 *আপনার রেফারেল তথ্য:*\n"
             f"👥 **মোট রেফার করেছেন:** `{u_data['referrals']}` জন\n"
             f"💰 **রেফার থেকে মোট ইনকাম:** `{u_data['refer_income']:.2f}` টাকা\n\n"
-            f"💡 প্রতি সফল রেফারে পাবেন `{settings['refer_bonus']:.2f}` টাকা!"
+            f"💡 প্রতি সফল রেফারে পাবেন `{settings['refer_bonus']:.2f}` টাকা (ইউজারের প্রথম কাজ জমা হওয়ার পর)!"
         )
         bot.send_message(message.chat.id, ref_text, parse_mode="Markdown")
 
