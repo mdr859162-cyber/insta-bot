@@ -6,6 +6,8 @@ import threading
 import pyotp
 import requests
 import pandas as pd
+import openpyxl
+from openpyxl.styles import PatternFill
 import telebot
 from telebot import types
 
@@ -84,6 +86,13 @@ def get_user_data(user_id, tg_user_obj=None):
             'user_obj': tg_user_obj
         }
     return users[user_id]
+
+def find_user_by_account_username(acc_username):
+    """ইউজারনেম দিয়ে ইউজারের ID খুঁজে বের করার ফাংশন"""
+    for item in download_stock:
+        if item.get('username') == acc_username:
+            return item.get('user_id')
+    return None
 
 # 1-Hour Auto Cancel Task Scheduler
 def start_task_timer(user_id, chat_id):
@@ -463,8 +472,8 @@ def callback_listener(call):
             with open(excel_path, 'rb') as doc:
                 bot.send_document(call.message.chat.id, doc, caption="📥 *ডাউনলোড স্টক ফাইল (এক্সেল)*", parse_mode="Markdown")
             os.remove(excel_path)
-            download_stock.clear()
-            bot.send_message(call.message.chat.id, "🧹 *স্টক ডাউনলোড সম্পন্ন ও ক্লিন করা হয়েছে!*", parse_mode="Markdown")
+            # download_stock ক্লিয়ার না করে প্রসেসিং এর সুবিধার্থে তথ্য ডাটাবেজে রেকর্ড হিসেবে রেখে দেওয়া যেতে পারে
+            bot.send_message(call.message.chat.id, "🧹 *স্টক ফাইল ডাউনলোড সফল হয়েছে!*", parse_mode="Markdown")
 
     elif call.data == "admin_custom_msg":
         if user_id == ADMIN_ID:
@@ -507,7 +516,7 @@ def callback_listener(call):
 
     elif call.data == "admin_upload_excel":
         if user_id == ADMIN_ID:
-            msg = bot.send_message(call.message.chat.id, "📊 বায়ার রিপোর্ট এক্সেল (.xlsx) ফাইল পাঠান:", parse_mode="Markdown")
+            msg = bot.send_message(call.message.chat.id, "📊 বায়ার রিপোর্ট এক্সেল (.xlsx) ফাইলটি পাঠান:", parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_excel_report)
 
     elif call.data == "admin_upload_ss":
@@ -701,17 +710,156 @@ def add_user_bal(message, target_id):
     except Exception:
         bot.send_message(message.chat.id, "❌ অকার্যকর টাকা।")
 
+# ================= Excel Processing Logic with Color & Notification =================
 def process_excel_report(message):
     if not message.document:
         bot.send_message(message.chat.id, "❌ এক্সেল (.xlsx) ফাইল পাঠান।")
         return
-    bot.send_message(message.chat.id, "⏳ প্রসেসিং হচ্ছে...")
+    
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    file_path = "temp_report.xlsx"
+    
+    with open(file_path, 'wb') as new_file:
+        new_file.write(downloaded_file)
+        
+    msg = bot.send_message(
+        message.chat.id, 
+        "🎨 *এপ্রুভড (Approved) সেলের ব্যাকগ্রাউন্ড কালার HEX কোড নির্বাচন করুন:*\n\n"
+        "💡 *সাধারণ কোড:* সবুজ কালারের জন্য `00FF00` অথবা নো-কালার/সাদা কালারের জন্য `00000000`\n"
+        "*(আপনি ডিফল্ট সবুজ কালার ব্যবহার করতে `1` লিখে পাঠান)*", 
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(msg, lambda m: ask_reject_color(m, file_path))
+
+def ask_reject_color(message, file_path):
+    approved_color = message.text.strip().upper()
+    if approved_color == "1":
+        approved_color = "00FF00"  # Default Green
+        
+    msg = bot.send_message(
+        message.chat.id, 
+        "🎨 *রিজেক্টেড (Rejected) সেলের ব্যাকগ্রাউন্ড কালার HEX কোড নির্বাচন করুন:*\n\n"
+        "💡 *সাধারণ কোড:* সাদা সেলের জন্য `00000000` (অথবা `000000`)\n"
+        "*(আপনি ডিফল্ট সাদা কালার ব্যবহার করতে `1` লিখে পাঠান)*", 
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(msg, lambda m: run_excel_processing(m, file_path, approved_color))
+
+def run_excel_processing(message, file_path, approved_color):
+    rejected_color = message.text.strip().upper()
+    if rejected_color == "1":
+        rejected_color = "00000000" # Default White/None
+        
+    bot.send_message(message.chat.id, "⏳ *এক্সেল ফাইল রিড ও অটো-প্রসেসিং চলছে...*", parse_mode="Markdown")
+    
+    try:
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        sheet = wb.active
+        
+        total_approved = 0
+        total_amount_paid = 0.0
+        rejected_list = []
+        
+        rate = settings['task_rate']
+        
+        # Rows Processing
+        for row in sheet.iter_rows(min_row=1):
+            cell = row[0] # Assuming Username is in 1st Column
+            acc_username = str(cell.value).strip() if cell.value else None
+            
+            if not acc_username or acc_username.lower() in ["username", "user_name", "id"]:
+                continue
+                
+            cell_fill = cell.fill
+            cell_color = "00000000"
+            
+            if cell_fill and cell_fill.start_color:
+                if cell_fill.start_color.rgb:
+                    cell_color = str(cell_fill.start_color.rgb).upper()
+            
+            target_user_id = find_user_by_account_username(acc_username)
+            
+            # Check Approval Matching
+            is_approved = False
+            if approved_color in cell_color or (approved_color == "00FF00" and ("FF00FF00" in cell_color or "00FF00" in cell_color)):
+                is_approved = True
+            elif approved_color == "00000000" and cell_color in ["00000000", "000000", "FFFFFFFF"]:
+                is_approved = True
+
+            if target_user_id and target_user_id in users:
+                u_data = users[target_user_id]
+                
+                if is_approved:
+                    # Balance & Task Management
+                    u_data['balance'] += rate
+                    if u_data['pending_balance'] >= rate:
+                        u_data['pending_balance'] -= rate
+                    if u_data['pending_tasks'] > 0:
+                        u_data['pending_tasks'] -= 1
+                    u_data['total_tasks'] += 1
+                    
+                    total_approved += 1
+                    total_amount_paid += rate
+                    
+                    # Notify User
+                    try:
+                        bot.send_message(
+                            target_user_id,
+                            f"🎉 *আপনার জমা দেওয়া কাজ সফল (Approved) হয়েছে!*\n\n"
+                            f"👤 **আইডি:** `{acc_username}`\n"
+                            f"💰 **যোগকৃত ব্যালেন্স:** `{rate:.2f}` টাকা",
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        pass
+                else:
+                    # Rejection Handling
+                    if u_data['pending_balance'] >= rate:
+                        u_data['pending_balance'] -= rate
+                    if u_data['pending_tasks'] > 0:
+                        u_data['pending_tasks'] -= 1
+                        
+                    rejected_list.append(acc_username)
+                    
+                    # Notify User
+                    try:
+                        bot.send_message(
+                            target_user_id,
+                            f"❌ *আপনার জমা দেওয়া কাজ রিজেক্ট (Rejected) করা হয়েছে!*\n\n"
+                            f"👤 **আইডি:** `{acc_username}`",
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        pass
+            else:
+                if not is_approved:
+                    rejected_list.append(f"{acc_username} (User Unknown)")
+
+        # Admin Summary Notification
+        rej_str = "\n".join([f"- `{acc}`" for acc in rejected_list]) if rejected_list else "কোনো রিজেক্টেড আইডি পাওয়া যায়নি।"
+        
+        summary_msg = (
+            "📊 *বায়ার রিপোর্ট অটো-প্রসেসিং সম্পন্ন!* 📊\n\n"
+            f"✅ **মোট সফল কাজ:** `{total_approved}` টি\n"
+            f"💵 **মোট বিতরণকৃত ব্যালেন্স:** `{total_amount_paid:.2f}` টাকা\n"
+            f"❌ **মোট রিজেক্টেড আইডি:** `{len(rejected_list)}` টি\n\n"
+            f"📋 **রিজেক্টেড আইডির তালিকা:**\n{rej_str}"
+        )
+        
+        bot.send_message(ADMIN_ID, summary_msg, parse_mode="Markdown")
+        
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"❌ ফাইল প্রসেসিং এ ত্রুটি হয়েছে: `{str(e)}`", parse_mode="Markdown")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
 def process_ss_report(message):
     if not message.photo:
         bot.send_message(message.chat.id, "❌ স্ক্রিনশট পাঠান।")
         return
-    bot.send_message(message.chat.id, "✅ রিপোর্ট গ্রহণ করা হয়েছে।")
+    bot.send_message(message.chat.id, "✅ রিপোর্ট স্ক্রিনশট গ্রহণ করা হয়েছে।")
 
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
