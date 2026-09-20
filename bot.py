@@ -2,6 +2,7 @@ import os
 import random
 import string
 import time
+import threading
 import pyotp
 import requests
 import pandas as pd
@@ -74,6 +75,20 @@ def get_user_data(user_id):
             'referred_by': None
         }
     return users[user_id]
+
+# 1-Hour Auto Cancel Task Scheduler
+def start_task_timer(user_id, chat_id):
+    def timer_job():
+        time.sleep(3600)  # 1 Hour
+        if user_id in active_user_tasks:
+            active_user_tasks.pop(user_id, None)
+            try:
+                bot.send_message(chat_id, "⏰ *সময় শেষ!* ১ ঘণ্টা পার হয়ে যাওয়ায় আপনার চলমান কাজটি অটোমেটিক বাতিল করা হয়েছে।", parse_mode="Markdown")
+            except Exception:
+                pass
+    t = threading.Thread(target=timer_job)
+    t.daemon = True
+    t.start()
 
 # ================= Keyboards =================
 def build_welcome_keyboard():
@@ -198,11 +213,11 @@ def callback_listener(call):
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception:
             pass
-        bot.send_message(call.message.chat.id, "❌ *আপনার কাজটি বাতিল করা হয়েছে।*", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "❌ *আপনার কাজটি সফলভাবে বাতিল করা হয়েছে।*", parse_mode="Markdown")
 
     elif call.data == "set_2fa":
         if user_id not in active_user_tasks:
-            bot.send_message(call.message.chat.id, "⚠️ আপনার কোনো চলমান কাজ পাওয়া যায়নি। আবার কাজ শুরু করুন।")
+            bot.send_message(call.message.chat.id, "⚠️ আপনার কোনো চলমান কাজ পাওয়া যায়নি। আবার নতুন কাজ শুরু করুন।")
             return
         
         username = active_user_tasks[user_id]['username']
@@ -215,6 +230,7 @@ def callback_listener(call):
                 bot.delete_message(call.message.chat.id, status_msg.message_id)
             except Exception:
                 pass
+            active_user_tasks[user_id]['attempts'] = 0
             msg = bot.send_message(call.message.chat.id, "✅ *একাউন্ট সঠিকভাবে তৈরি হয়েছে!*\n\n🔐 এবার আপনার **2FA Secret Key** টি ইনপুট হিসেবে পাঠান:", parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_2fa_key)
         else:
@@ -222,7 +238,7 @@ def callback_listener(call):
                 bot.delete_message(call.message.chat.id, status_msg.message_id)
             except Exception:
                 pass
-            bot.send_message(call.message.chat.id, "❌ *একাউন্টটি ইনস্টাগ্রামে পাওয়া যায়নি!*\nদয়া করে দেওয়া তথ্য দিয়ে একাউন্টটি তৈরি করার পর আবার চেষ্টা করুন।", parse_mode="Markdown")
+            bot.send_message(call.message.chat.id, "❌ *একাউন্টটি ইনস্টাগ্রামে পাওয়া যায়নি!*\nদয়া করে আগে সঠিকভাবে ইউজারনেম ও পাসওয়ার্ড দিয়ে একাউন্ট তৈরি করুন, তারপর চেষ্টা করুন।", parse_mode="Markdown")
 
     elif call.data == "submit_final_job":
         task_data = active_user_tasks.get(user_id)
@@ -242,7 +258,6 @@ def callback_listener(call):
         u_data['today_tasks'] += 1
         u_data['pending_balance'] += settings['task_rate']
         
-        # পপআপ মেসেজ সম্পূর্ণ ক্লিয়ার করে দেওয়া হচ্ছে
         if 'task_msg_id' in task_data:
             try:
                 bot.delete_message(call.message.chat.id, task_data['task_msg_id'])
@@ -314,7 +329,6 @@ def callback_listener(call):
             with open(excel_path, 'rb') as doc:
                 bot.send_document(call.message.chat.id, doc, caption="📥 *ডাউনলোড স্টক ফাইল (এক্সেল)*", parse_mode="Markdown")
             os.remove(excel_path)
-            # স্টক ডাউনলোড করার পর বটের মেমোরি খালি/ডিলিট হয়ে যাবে
             download_stock.clear()
             bot.send_message(call.message.chat.id, "🧹 *স্টক ডাউনলোড সম্পন্ন এবং ডাটা অটোমেটিক ক্লিন করা হয়েছে!*", parse_mode="Markdown")
 
@@ -368,18 +382,24 @@ def callback_listener(call):
             admin_states[user_id] = key
             bot.send_message(call.message.chat.id, f"✍️ **{key.upper()}** এর জন্য নতুন ইনপুট লিখে পাঠান:", parse_mode="Markdown")
 
-# 2FA Validation Procedure
+# 2FA Validation Logic with 3-Attempt Limit
 def process_2fa_key(message):
     user_id = message.from_user.id
     raw_key = message.text.strip().replace(" ", "")
     
+    if user_id not in active_user_tasks:
+        bot.send_message(message.chat.id, "⚠️ আপনার কাজটি ইতোমধ্যে বাতিল বা শেষ হয়ে গেছে।")
+        return
+
+    task_data = active_user_tasks[user_id]
+    task_data['attempts'] = task_data.get('attempts', 0) + 1
+
     try:
         totp = pyotp.TOTP(raw_key)
-        code = totp.now()  # 6 digit code test
+        code = totp.now()
         
-        if len(str(code)) == 6 and user_id in active_user_tasks:
-            active_user_tasks[user_id]['temp_2fa'] = raw_key
-            
+        if len(str(code)) == 6:
+            task_data['temp_2fa'] = raw_key
             bot.send_message(
                 message.chat.id,
                 f"🔑 *2FA Key ভ্যালিড করা হয়েছে! (generated code: {code})*\n\n"
@@ -387,11 +407,21 @@ def process_2fa_key(message):
                 parse_mode="Markdown",
                 reply_markup=build_submit_keyboard()
             )
+            return
         else:
             raise ValueError("Invalid Key")
     except Exception:
-        msg = bot.send_message(message.chat.id, "❌ *অকার্যকর 2FA Key!*\nদয়া করে সঠিক Secret Key টি আবার ইনপুট হিসেবে দিন:", parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_2fa_key)
+        if task_data['attempts'] >= 3:
+            active_user_tasks.pop(user_id, None)
+            bot.send_message(message.chat.id, "❌ *পর পর ৩ বার ভুল 2FA Key দিয়েছেন!*\nআপনার বর্তমান কাজটি অটোমেটিক বাতিল করা হলো।", parse_mode="Markdown")
+        else:
+            msg = bot.send_message(
+                message.chat.id, 
+                f"❌ *অকার্যকর 2FA Key! (চেষ্টা: {task_data['attempts']}/৩)*\n"
+                "দয়া করে সঠিক Secret Key টি আবার পাঠান:", 
+                parse_mode="Markdown"
+            )
+            bot.register_next_step_handler(msg, process_2fa_key)
 
 # Admin Functions Step Handlers
 def process_target_user_for_msg(message):
@@ -407,7 +437,7 @@ def send_custom_user_msg(message, target_id):
         bot.send_message(target_id, f"📩 *এডমিন থেকে নতুন মেসেজ:*\n\n{message.text}", parse_mode="Markdown")
         bot.send_message(message.chat.id, "✅ মেসেজ সফলভাবে পাঠানো হয়েছে!")
     except Exception:
-        bot.send_message(message.chat.id, "❌ মেসেজ পাঠানো সম্ভব হয়নি। ইউজার বট ব্লক করে থাকতে পারে।")
+        bot.send_message(message.chat.id, "❌ মেসেজ পাঠানো সম্ভব হয়নি।")
 
 def process_target_user_for_bal(message):
     try:
@@ -475,6 +505,7 @@ def handle_text(message):
         
         task_text = (
             "✨ *আপনার কাজের বিস্তারিত তথ্য নিচে দেওয়া হলো:* ✨\n\n"
+            f"💰 **বর্তমান কাজের রেট:** `{settings['task_rate']:.2f}` টাকা\n"
             f"👤 **Username:** `{username}`\n"
             f"🔑 **Password:** `{password}`\n\n"
             "👉 ওপরের তথ্য দিয়ে একাউন্ট তৈরি করে **2FA Set** বাটনে চাপ দিন।"
@@ -484,8 +515,12 @@ def handle_text(message):
         active_user_tasks[user_id] = {
             'username': username, 
             'password': password,
-            'task_msg_id': msg_sent.message_id
+            'task_msg_id': msg_sent.message_id,
+            'attempts': 0
         }
+        
+        # 1-Hour Expiry Timer
+        start_task_timer(user_id, message.chat.id)
 
     elif text == "💰 ব্যালেন্স & উইথড্র 💳":
         u_data = get_user_data(user_id)
@@ -521,6 +556,7 @@ def handle_text(message):
         
         ref_text = (
             f"🎁 *রেফারেল সিস্টেম* 🎁\n\n"
+            f"{settings['refer_msg']}\n\n"
             f"🔗 *আপনার রেফারেল লিংক:* \n`{ref_link}`\n\n"
             f"📊 *আপনার রেফারেল তথ্য:*\n"
             f"👥 **মোট রেফার করেছেন:** `{u_data['referrals']}` জন\n"
