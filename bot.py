@@ -595,7 +595,7 @@ def process_withdraw_amount(message):
 # STRICT 2FA KEY VALIDATION AND LIVE OTP CODE GENERATION
 def process_2fa_key(message):
     user_id = message.from_user.id
-    raw_key = message.text.strip().replace(" ", "")
+    raw_key = message.text.strip().replace(" ", "").upper()
     
     if user_id not in active_user_tasks:
         bot.send_message(message.chat.id, "⚠️ আপনার কাজটি বাতিল হয়ে গেছে। আবার নতুন করে শুরু করুন।")
