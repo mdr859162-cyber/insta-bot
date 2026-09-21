@@ -54,30 +54,9 @@ def generate_credentials():
     password = f"InstaXHub@{pass_nums}#"
     return username, password
 
-# Improved Real Instagram Account Check (Picuki Scraper API Fallback)
+# Scraper Fix: Always return True to avoid false-positive blocking
 def check_instagram_user_exists(username):
-    url = f"https://www.picuki.com/profile/{username}"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
-    }
-    try:
-        res = requests.get(url, headers=headers, timeout=6)
-        if res.status_code == 200 and username.lower() in res.text.lower():
-            return True
-        
-        # Secondary fallback directly from Instagram public API endpoint
-        ig_url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={username}"
-        ig_headers = {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_5 like Mac OS X)',
-            'x-ig-app-id': '936619743392459'
-        }
-        res_ig = requests.get(ig_url, headers=ig_headers, timeout=5)
-        if res_ig.status_code == 200:
-            return True
-            
-        return False
-    except Exception:
-        return False
+    return True
 
 def get_user_data(user_id, tg_user_obj=None):
     if user_id not in users:
@@ -252,30 +231,9 @@ def callback_listener(call):
             bot.send_message(call.message.chat.id, "⚠️ আপনার কোনো চলমান কাজ পাওয়া যায়নি। আবার কাজ শুরু করুন।")
             return
         
-        username = active_user_tasks[user_id]['username']
-        bot.answer_callback_query(call.id, "🔍 ইনস্টাগ্রাম অ্যাকাউন্ট ভেরিফাই করা হচ্ছে...")
-        status_msg = bot.send_message(call.message.chat.id, "⏳ *দয়া করে অপেক্ষা করুন! Instagram-এ অ্যাকাউন্ট ভেরিফিকেশন করা হচ্ছে...*", parse_mode="Markdown")
-        
-        # Instagram Real-Time Verification Check
-        if check_instagram_user_exists(username):
-            try:
-                bot.delete_message(call.message.chat.id, status_msg.message_id)
-            except Exception:
-                pass
-            active_user_tasks[user_id]['attempts'] = 0
-            msg = bot.send_message(call.message.chat.id, "✅ *ইনস্টাগ্রাম একাউন্ট সফলভাবে পাওয়া গেছে!*\n\n🔐 এবার আপনার Instagram থেকে পাওয়া **2FA Secret Key** টি সঠিকভাবে দিন:", parse_mode="Markdown")
-            bot.register_next_step_handler(msg, process_2fa_key)
-        else:
-            try:
-                bot.delete_message(call.message.chat.id, status_msg.message_id)
-            except Exception:
-                pass
-            bot.send_message(
-                call.message.chat.id, 
-                "❌ *কোনো ইনস্টাগ্রাম একাউন্ট খুঁজে পাওয়া যায়নি!*\n\n"
-                "⚠️ আপনি প্রদত্ত ইউজারনেম দিয়ে এখনো ইনস্টাগ্রামে একাউন্ট খুলেননি। দয়া করে আগে ইনস্টাগ্রামে সঠিক তথ্য দিয়ে একাউন্ট তৈরি করুন, তারপর আবার **2FA Set** বাটনে চাপ দিন।",
-                parse_mode="Markdown"
-            )
+        active_user_tasks[user_id]['attempts'] = 0
+        msg = bot.send_message(call.message.chat.id, "🔐 আপনার Instagram থেকে পাওয়া **2FA Secret Key** টি সঠিকভাবে দিন:", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, process_2fa_key)
 
     elif call.data == "submit_final_job":
         task_data = active_user_tasks.get(user_id)
