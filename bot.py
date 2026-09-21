@@ -7,7 +7,6 @@ import pyotp
 import requests
 import pandas as pd
 import openpyxl
-from openpyxl.styles import PatternFill
 import telebot
 from telebot import types
 
@@ -23,10 +22,10 @@ bot = telebot.TeleBot(API_TOKEN)
 # ================= In-Memory Database =================
 users = {}
 download_stock = [] 
-account_history = {}  # { 'username': user_id } -> স্টক ক্লিয়ার হলেও ইউজার ট্র্যাক করার জন্য
+account_history = {}  # { 'username': user_id }
 active_user_tasks = {} 
 admin_states = {}
-user_states = {} # User state for withdraw process
+user_states = {} 
 
 settings = {
     'bot_active': True,
@@ -35,7 +34,7 @@ settings = {
     'refer_bonus': 10.0,
     'welcome_msg': "👋 *আসালামু আলাইকুম!*\n✨ **Insta X Hub Management Bot**-এ আপনাকে স্বাগতম!",
     'rules_text': "⚠️ *কাজের নিয়ম:* \nসঠিকভাবে ইনস্টাগ্রাম একাউন্ট খুলে 2FA সেট করে জমা দিন।",
-    'video_url': "https://t.me/instaXhubsaport", # Admin default video link
+    'video_url': "https://t.me/instaXhubsaport",
     'refer_msg': "🎁 *রেফার করে আয় করুন!*",
     'helpline_msg': "🎧 *হেল্পলাইন ও সাপোর্ট:* \nযেকোনো সমস্যায় আমাদের চ্যানেলে জয়েন করুন বা এডমিনকে মেসেজ দিন।"
 }
@@ -55,15 +54,28 @@ def generate_credentials():
     password = f"InstaXHub@{pass_nums}#"
     return username, password
 
-# Real Instagram Account Validation Check
+# Improved Real Instagram Account Check (Picuki Scraper API Fallback)
 def check_instagram_user_exists(username):
-    url = f"https://www.instagram.com/{username}/"
+    url = f"https://www.picuki.com/profile/{username}"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
     }
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        return res.status_code == 200
+        res = requests.get(url, headers=headers, timeout=6)
+        if res.status_code == 200 and username.lower() in res.text.lower():
+            return True
+        
+        # Secondary fallback directly from Instagram public API endpoint
+        ig_url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={username}"
+        ig_headers = {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_5 like Mac OS X)',
+            'x-ig-app-id': '936619743392459'
+        }
+        res_ig = requests.get(ig_url, headers=ig_headers, timeout=5)
+        if res_ig.status_code == 200:
+            return True
+            
+        return False
     except Exception:
         return False
 
@@ -89,7 +101,6 @@ def get_user_data(user_id, tg_user_obj=None):
     return users[user_id]
 
 def find_user_by_account_username(acc_username):
-    """হিস্ট্রি ডাটাবেজ এবং স্টক দুই জায়গা থেকেই ইউজার আইডি খোঁজার ফাংশন"""
     if acc_username in account_history:
         return account_history[acc_username]
     for item in download_stock:
@@ -97,10 +108,9 @@ def find_user_by_account_username(acc_username):
             return item.get('user_id')
     return None
 
-# 1-Hour Auto Cancel Task Scheduler
 def start_task_timer(user_id, chat_id):
     def timer_job():
-        time.sleep(3600)  # 1 Hour
+        time.sleep(3600)  # 1 Hour Timer
         if user_id in active_user_tasks:
             active_user_tasks.pop(user_id, None)
             try:
@@ -243,16 +253,17 @@ def callback_listener(call):
             return
         
         username = active_user_tasks[user_id]['username']
-        bot.answer_callback_query(call.id, "🔍 ইনস্টাগ্রাম অ্যাকাউন্ট চেক হচ্ছে...")
-        status_msg = bot.send_message(call.message.chat.id, "⏳ *ইনস্টাগ্রামে ইউজারনেম চেক করা হচ্ছে...*", parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "🔍 ইনস্টাগ্রাম অ্যাকাউন্ট ভেরিফাই করা হচ্ছে...")
+        status_msg = bot.send_message(call.message.chat.id, "⏳ *দয়া করে অপেক্ষা করুন! Instagram-এ অ্যাকাউন্ট ভেরিফিকেশন করা হচ্ছে...*", parse_mode="Markdown")
         
+        # Instagram Real-Time Verification Check
         if check_instagram_user_exists(username):
             try:
                 bot.delete_message(call.message.chat.id, status_msg.message_id)
             except Exception:
                 pass
             active_user_tasks[user_id]['attempts'] = 0
-            msg = bot.send_message(call.message.chat.id, "✅ *ইনস্টাগ্রাম একাউন্ট পাওয়া গেছে!*\n\n🔐 এবার আপনার **2FA Secret Key** টি দিন:", parse_mode="Markdown")
+            msg = bot.send_message(call.message.chat.id, "✅ *ইনস্টাগ্রাম একাউন্ট সফলভাবে পাওয়া গেছে!*\n\n🔐 এবার আপনার Instagram থেকে পাওয়া **2FA Secret Key** টি সঠিকভাবে দিন:", parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_2fa_key)
         else:
             try:
@@ -262,14 +273,14 @@ def callback_listener(call):
             bot.send_message(
                 call.message.chat.id, 
                 "❌ *কোনো ইনস্টাগ্রাম একাউন্ট খুঁজে পাওয়া যায়নি!*\n\n"
-                "⚠️ দেওয়া তথ্য অনুযায়ী আপনি এখনো ইনস্টাগ্রামে একাউন্ট খুলেননি। আগে ইনস্টাগ্রামে সফলভাবে একাউন্ট খুলুন, তারপর **2FA Set** বাটনে চাপ দিন।",
+                "⚠️ আপনি প্রদত্ত ইউজারনেম দিয়ে এখনো ইনস্টাগ্রামে একাউন্ট খুলেননি। দয়া করে আগে ইনস্টাগ্রামে সঠিক তথ্য দিয়ে একাউন্ট তৈরি করুন, তারপর আবার **2FA Set** বাটনে চাপ দিন।",
                 parse_mode="Markdown"
             )
 
     elif call.data == "submit_final_job":
         task_data = active_user_tasks.get(user_id)
         if not task_data or 'temp_2fa' not in task_data:
-            bot.send_message(call.message.chat.id, "⚠️ কাজের তথ্য পাওয়া যায়নি।")
+            bot.send_message(call.message.chat.id, "⚠️ কাজের কোনো বৈধ তথ্য পাওয়া যায়নি! কাজ বাতিল করা হলো।")
             return
 
         u_data = get_user_data(user_id, call.from_user)
@@ -282,7 +293,6 @@ def callback_listener(call):
                 if u_data['device_fp'] == ref_user['device_fp']:
                     is_same_device = True
 
-        # account_history-তে সেভ রাখা হচ্ছে যেন স্টক খালি হলেও বায়ার রিপোর্ট প্রসেস করা যায়
         account_history[task_data['username']] = user_id
 
         download_stock.append({
@@ -305,7 +315,7 @@ def callback_listener(call):
                     bot.send_message(
                         ref_id,
                         "❌ *রেফার বোনাস প্রদান ব্যর্থ হয়েছে!*\n\n"
-                        "⚠️ একই ফোনে ডাবল আইডি দিয়ে ফেক রেফার করার চেষ্টা সনাক্ত করা হয়েছে। সঠিক রেফার করুন এবং বোনাস নিন।",
+                        "⚠️ একই ডিভাইস দিয়ে ফেক রেফারাল সনাক্ত করা হয়েছে।",
                         parse_mode="Markdown"
                     )
                 except Exception:
@@ -317,8 +327,8 @@ def callback_listener(call):
                 try:
                     bot.send_message(
                         ref_id,
-                        f"🎉 *অভিনন্দন! আপনার রেফারেল ইউজারের ১ম কাজ সফল হয়েছে।*\n\n"
-                        f"💰 আপনার অ্যাকাউন্টে **{settings['refer_bonus']:.0f} টাকা** রেফার বোনাস যোগ করা হয়েছে।",
+                        f"🎉 *অভিনন্দন! আপনার রেফার করা ইউজারের ১ম কাজ সফল হয়েছে।*\n\n"
+                        f"💰 আপনার ওয়ালেটে **{settings['refer_bonus']:.0f} টাকা** রেফার বোনাস যোগ করা হয়েছে।",
                         parse_mode="Markdown"
                     )
                 except Exception:
@@ -342,7 +352,7 @@ def callback_listener(call):
         bot.send_message(
             call.message.chat.id,
             "🎉 *আপনার কাজটি সফলভাবে জমা নেওয়া হয়েছে!*\n"
-            "⏰ ১২-২৪ ঘণ্টার মধ্যে রিভিউ সম্পন্ন করে টাকা ওয়ালেটে যোগ করে দেওয়া হবে। 💸",
+            "⏰ ১২-২৪ ঘণ্টার মধ্যে রিভিউ সম্পন্ন করে টাকা আপনার মূল ব্যালেন্স-এ যোগ করে দেওয়া হবে। 💸",
             parse_mode="Markdown"
         )
 
@@ -407,13 +417,12 @@ def callback_listener(call):
             target_id = int(parts[2])
             amount = float(parts[3])
             
-            # Return money back to user balance
             target_data = get_user_data(target_id)
             target_data['balance'] += amount
             
             try:
                 bot.edit_message_text(
-                    f"{call.message.text}\n\n❌ *অবস্থা:* রিজেক্ট করা হয়েছে এবং টাকা ইউজারের ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
+                    f"{call.message.text}\n\n❌ *অবস্থা:* রিজেক্ট করা হয়েছে এবং টাকা ফেরত দেওয়া হয়েছে।",
                     call.message.chat.id,
                     call.message.message_id,
                     parse_mode="Markdown"
@@ -481,10 +490,7 @@ def callback_listener(call):
                 bot.send_document(call.message.chat.id, doc, caption=f"📥 *নতুন {len(download_stock)} টি আইডির স্টক ফাইল*", parse_mode="Markdown")
             
             os.remove(excel_path)
-            
-            # 🛑 ফাইল ডাউনলোড হওয়ার সাথে সাথেই স্টক খালি করে দেওয়া হচ্ছে
             download_stock.clear()
-            
             bot.send_message(call.message.chat.id, "🧹 *স্টক ফাইল ডাউনলোড সম্পন্ন এবং স্টক তালিকা খালি করা হয়েছে!*", parse_mode="Markdown")
 
     elif call.data == "admin_custom_msg":
@@ -596,11 +602,9 @@ def process_withdraw_amount(message):
         method = user_states[user_id]['method']
         number = user_states[user_id]['number']
         
-        # Deduct balance temporarily
         u_data['balance'] -= amount
         user_states.pop(user_id, None)
         
-        # Notify User
         bot.send_message(
             message.chat.id,
             "✅ *আপনার উইথড্র রিকোয়েস্টটি সফলভাবে পাঠানো হয়েছে!*\n\n"
@@ -608,7 +612,6 @@ def process_withdraw_amount(message):
             parse_mode="Markdown"
         )
         
-        # Notify Admin
         admin_markup = types.InlineKeyboardMarkup()
         admin_markup.add(
             types.InlineKeyboardButton("✅ Approve", callback_data=f"wd_approve_{user_id}_{amount}"),
@@ -631,43 +634,46 @@ def process_withdraw_amount(message):
         bot.send_message(message.chat.id, "❌ অকার্যকর টাকার পরিমাণ। প্রক্রিয়াটি বাতিল করা হলো।")
         user_states.pop(user_id, None)
 
-# 2FA Validation Logic (3 Attempts)
+# STRICT 2FA KEY VALIDATION AND LIVE OTP CODE GENERATION
 def process_2fa_key(message):
     user_id = message.from_user.id
     raw_key = message.text.strip().replace(" ", "")
     
     if user_id not in active_user_tasks:
-        bot.send_message(message.chat.id, "⚠️ আপনার কাজটি বাতিল হয়ে গেছে।")
+        bot.send_message(message.chat.id, "⚠️ আপনার কাজটি বাতিল হয়ে গেছে। আবার নতুন করে শুরু করুন।")
         return
 
     task_data = active_user_tasks[user_id]
     task_data['attempts'] = task_data.get('attempts', 0) + 1
 
     try:
+        # Check if secret key is valid Base32 string and can generate TOTP Code
         totp = pyotp.TOTP(raw_key)
-        code = totp.now()
+        code = totp.now()  # Generates 6-Digit Real-time Code
         
-        if len(str(code)) == 6:
+        if len(str(code)) == 6 and str(code).isdigit():
             task_data['temp_2fa'] = raw_key
             bot.send_message(
                 message.chat.id,
-                f"🔑 *2FA Key ভ্যালিড করা হয়েছে! (Code: {code})*\n\n"
-                "কাজটি জমা দিতে নিচের **কাজ জমা দিন** বাটনে ক্লিক করুন:",
+                f"✅ *2FA Secret Key সফলভাবে ম্যাচ করেছে!*\n\n"
+                f"🔑 **আপনার বর্তমান ৬-ডিজিটের 2FA কোড:** `{code}`\n\n"
+                "কাজটি সম্পন্ন করতে নিচের **কাজ জমা দিন** বাটনে ক্লিক করুন:",
                 parse_mode="Markdown",
                 reply_markup=build_submit_keyboard()
             )
             return
         else:
-            raise ValueError("Invalid Key")
+            raise ValueError("Invalid Key Format")
+
     except Exception:
         if task_data['attempts'] >= 3:
             active_user_tasks.pop(user_id, None)
-            bot.send_message(message.chat.id, "❌ *পর পর ৩ বার ভুল 2FA Key দিয়েছেন!*\nআপনার কাজটি বাতিল করা হলো।", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "❌ *পর পর ৩ বার ভুল বা ভুয়া 2FA Key দেওয়া হয়েছে!*\nআপনার চলতি কাজটি বাতিল করা হলো।", parse_mode="Markdown")
         else:
             msg = bot.send_message(
                 message.chat.id, 
-                f"❌ *ভুল 2FA Key! (চেষ্টা: {task_data['attempts']}/৩)*\n"
-                "দয়া করে সঠিক Secret Key টি আবার পাঠান:", 
+                f"❌ *ভুল বা অকার্যকর 2FA Secret Key! (চেষ্টা: {task_data['attempts']}/৩)*\n\n"
+                "⚠️ দয়া করে ইনস্টাগ্রাম থেকে প্রাপ্ত সঠিক **2FA Secret Key** টি আবার লিখে পাঠান:", 
                 parse_mode="Markdown"
             )
             bot.register_next_step_handler(msg, process_2fa_key)
@@ -722,7 +728,7 @@ def add_user_bal(message, target_id):
     except Exception:
         bot.send_message(message.chat.id, "❌ অকার্যকর টাকা।")
 
-# ================= Excel Processing Logic with Color & Notification =================
+# ================= Excel Processing Logic =================
 def process_excel_report(message):
     if not message.document:
         bot.send_message(message.chat.id, "❌ এক্সেল (.xlsx) ফাইল পাঠান।")
@@ -747,7 +753,7 @@ def process_excel_report(message):
 def ask_reject_color(message, file_path):
     approved_color = message.text.strip().upper()
     if approved_color == "1":
-        approved_color = "00FF00"  # Default Green
+        approved_color = "00FF00"
         
     msg = bot.send_message(
         message.chat.id, 
@@ -761,7 +767,7 @@ def ask_reject_color(message, file_path):
 def run_excel_processing(message, file_path, approved_color):
     rejected_color = message.text.strip().upper()
     if rejected_color == "1":
-        rejected_color = "00000000" # Default White/None
+        rejected_color = "00000000"
         
     bot.send_message(message.chat.id, "⏳ *এক্সেল ফাইল রিড ও অটো-প্রসেসিং চলছে...*", parse_mode="Markdown")
     
@@ -775,9 +781,8 @@ def run_excel_processing(message, file_path, approved_color):
         
         rate = settings['task_rate']
         
-        # Rows Processing
         for row in sheet.iter_rows(min_row=1):
-            cell = row[0] # Assuming Username is in 1st Column
+            cell = row[0]
             acc_username = str(cell.value).strip() if cell.value else None
             
             if not acc_username or acc_username.lower() in ["username", "user_name", "id"]:
@@ -792,7 +797,6 @@ def run_excel_processing(message, file_path, approved_color):
             
             target_user_id = find_user_by_account_username(acc_username)
             
-            # Check Approval Matching
             is_approved = False
             if approved_color in cell_color or (approved_color == "00FF00" and ("FF00FF00" in cell_color or "00FF00" in cell_color)):
                 is_approved = True
@@ -803,7 +807,6 @@ def run_excel_processing(message, file_path, approved_color):
                 u_data = users[target_user_id]
                 
                 if is_approved:
-                    # Balance & Task Management
                     u_data['balance'] += rate
                     if u_data['pending_balance'] >= rate:
                         u_data['pending_balance'] -= rate
@@ -814,7 +817,6 @@ def run_excel_processing(message, file_path, approved_color):
                     total_approved += 1
                     total_amount_paid += rate
                     
-                    # Notify User
                     try:
                         bot.send_message(
                             target_user_id,
@@ -826,7 +828,6 @@ def run_excel_processing(message, file_path, approved_color):
                     except Exception:
                         pass
                 else:
-                    # Rejection Handling
                     if u_data['pending_balance'] >= rate:
                         u_data['pending_balance'] -= rate
                     if u_data['pending_tasks'] > 0:
@@ -834,7 +835,6 @@ def run_excel_processing(message, file_path, approved_color):
                         
                     rejected_list.append(acc_username)
                     
-                    # Notify User
                     try:
                         bot.send_message(
                             target_user_id,
@@ -848,7 +848,6 @@ def run_excel_processing(message, file_path, approved_color):
                 if not is_approved:
                     rejected_list.append(f"{acc_username} (User Unknown)")
 
-        # Admin Summary Notification
         rej_str = "\n".join([f"- `{acc}`" for acc in rejected_list]) if rejected_list else "কোনো রিজেক্টেড আইডি পাওয়া যায়নি।"
         
         summary_msg = (
