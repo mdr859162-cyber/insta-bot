@@ -23,6 +23,7 @@ bot = telebot.TeleBot(API_TOKEN)
 # ================= In-Memory Database =================
 users = {}
 download_stock = [] 
+account_history = {}  # { 'username': user_id } -> স্টক ক্লিয়ার হলেও ইউজার ট্র্যাক করার জন্য
 active_user_tasks = {} 
 admin_states = {}
 user_states = {} # User state for withdraw process
@@ -88,7 +89,9 @@ def get_user_data(user_id, tg_user_obj=None):
     return users[user_id]
 
 def find_user_by_account_username(acc_username):
-    """ইউজারনেম দিয়ে ইউজারের ID খুঁজে বের করার ফাংশন"""
+    """হিস্ট্রি ডাটাবেজ এবং স্টক দুই জায়গা থেকেই ইউজার আইডি খোঁজার ফাংশন"""
+    if acc_username in account_history:
+        return account_history[acc_username]
     for item in download_stock:
         if item.get('username') == acc_username:
             return item.get('user_id')
@@ -279,6 +282,9 @@ def callback_listener(call):
                 if u_data['device_fp'] == ref_user['device_fp']:
                     is_same_device = True
 
+        # account_history-তে সেভ রাখা হচ্ছে যেন স্টক খালি হলেও বায়ার রিপোর্ট প্রসেস করা যায়
+        account_history[task_data['username']] = user_id
+
         download_stock.append({
             'user_id': user_id,
             'username': task_data['username'],
@@ -464,16 +470,22 @@ def callback_listener(call):
     elif call.data == "admin_stock_download":
         if user_id == ADMIN_ID:
             if not download_stock:
-                bot.send_message(call.message.chat.id, "⚠️ স্টকে কোনো কাজ নেই!")
+                bot.send_message(call.message.chat.id, "⚠️ স্টকে কোনো নতুন কাজ নেই!")
                 return
+            
             df = pd.DataFrame(download_stock)
             excel_path = "download_stock.xlsx"
             df[['username', 'password', '2fa_key']].to_excel(excel_path, index=False)
+            
             with open(excel_path, 'rb') as doc:
-                bot.send_document(call.message.chat.id, doc, caption="📥 *ডাউনলোড স্টক ফাইল (এক্সেল)*", parse_mode="Markdown")
+                bot.send_document(call.message.chat.id, doc, caption=f"📥 *নতুন {len(download_stock)} টি আইডির স্টক ফাইল*", parse_mode="Markdown")
+            
             os.remove(excel_path)
-            # download_stock ক্লিয়ার না করে প্রসেসিং এর সুবিধার্থে তথ্য ডাটাবেজে রেকর্ড হিসেবে রেখে দেওয়া যেতে পারে
-            bot.send_message(call.message.chat.id, "🧹 *স্টক ফাইল ডাউনলোড সফল হয়েছে!*", parse_mode="Markdown")
+            
+            # 🛑 ফাইল ডাউনলোড হওয়ার সাথে সাথেই স্টক খালি করে দেওয়া হচ্ছে
+            download_stock.clear()
+            
+            bot.send_message(call.message.chat.id, "🧹 *স্টক ফাইল ডাউনলোড সম্পন্ন এবং স্টক তালিকা খালি করা হয়েছে!*", parse_mode="Markdown")
 
     elif call.data == "admin_custom_msg":
         if user_id == ADMIN_ID:
